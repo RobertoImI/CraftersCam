@@ -1,0 +1,27 @@
+modLoader="javafml"
+loaderVersion="[4,)"
+license="All Rights Reserved"
+
+[[mods]]
+modId="crafterscam"
+version="1.0.0"
+displayName="CraftersCam"
+authors="Crafters CR"
+description='''
+Cámara cinemática multijugador para eventos.
+Permite guardar puntos de cámara, reproducir vistas fijas y crear secuencias panorámicas.
+'''
+
+[[dependencies.crafterscam]]
+modId="neoforge"
+type="required"
+versionRange="[21.1,)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.crafterscam]]
+modId="minecraft"
+type="required"
+versionRange="[1.21.1]"
+ordering="NONE"
+side="BOTH"
