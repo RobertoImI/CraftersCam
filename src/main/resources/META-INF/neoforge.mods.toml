@@ -12,6 +12,9 @@ Cámara cinemática multijugador para eventos.
 Permite guardar puntos de cámara, reproducir vistas fijas y crear secuencias panorámicas.
 '''
 
+[[mixins]]
+config="crafterscam.mixins.json"
+
 [[dependencies.crafterscam]]
 modId="neoforge"
 type="required"
