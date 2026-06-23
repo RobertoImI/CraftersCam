@@ -62,14 +62,14 @@ public class CamCommands {
                                                 ))
                                         )
                                 )
-                        )
 
-                        .then(Commands.literal("movement")
-                                .then(Commands.argument("enabled", BoolArgumentType.bool())
-                                        .executes(ctx -> setMovement(
-                                                ctx.getSource(),
-                                                BoolArgumentType.getBool(ctx, "enabled")
-                                        ))
+                                .then(Commands.literal("movement")
+                                        .then(Commands.argument("enabled", BoolArgumentType.bool())
+                                                .executes(ctx -> setMovement(
+                                                        ctx.getSource(),
+                                                        BoolArgumentType.getBool(ctx, "enabled")
+                                                ))
+                                        )
                                 )
                         )
 
