@@ -11,6 +11,10 @@ import org.crafterscr.crafterscam.network.StartCinematicPayload;
 import org.crafterscr.crafterscam.network.StopCinematicPayload;
 import net.minecraft.world.phys.Vec3;
 
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
 import java.util.*;
 
 public class CamServerManager {
@@ -20,6 +24,8 @@ public class CamServerManager {
 
     private final Set<UUID> showAllViewers = new HashSet<>();
     private int showTickCounter = 0;
+
+    private final Map<UUID, MovementLock> movementLocks = new HashMap<>();
 
     private CamServerManager() {
     }
@@ -71,6 +77,8 @@ public class CamServerManager {
     }
 
     public void tickShowPoints(MinecraftServer server) {
+        tickMovementLocks(server);
+
         if (showAllViewers.isEmpty()) {
             return;
         }
@@ -355,6 +363,7 @@ public class CamServerManager {
 
         for (ServerPlayer player : targets) {
             PacketDistributor.sendToPlayer(player, StopCinematicPayload.INSTANCE);
+            unlockMovement(player);
             count++;
         }
 
@@ -381,6 +390,19 @@ public class CamServerManager {
                     settings.allowMovement
             ));
 
+            if (!settings.allowMovement) {
+                int totalTicks = 0;
+
+                for (NetCameraSegment segment : segments) {
+                    totalTicks += Math.max(1, segment.durationTicks());
+                }
+
+                // Margen extra para cubrir fade/sincronización.
+                lockMovement(player, totalTicks + 40);
+            } else {
+                unlockMovement(player);
+            }
+
             sent++;
         }
 
@@ -389,6 +411,20 @@ public class CamServerManager {
         }
 
         return PlayResult.ok(sent);
+    }
+
+    private static class MovementLock {
+        private final String dimension;
+        private final double x;
+        private final double z;
+        private int ticksLeft;
+
+        private MovementLock(String dimension, double x, double z, int ticksLeft) {
+            this.dimension = dimension;
+            this.x = x;
+            this.z = z;
+            this.ticksLeft = ticksLeft;
+        }
     }
 
     public record PlayResult(boolean success, int sent, String message) {
@@ -408,6 +444,69 @@ public class CamServerManager {
 
         public static UndoResult fail(String message) {
             return new UndoResult(false, message);
+        }
+    }
+
+    private void lockMovement(ServerPlayer player, int ticks) {
+        movementLocks.put(
+                player.getUUID(),
+                new MovementLock(
+                        player.level().dimension().location().toString(),
+                        player.getX(),
+                        player.getZ(),
+                        Math.max(1, ticks)
+                )
+        );
+    }
+
+    private void unlockMovement(ServerPlayer player) {
+        movementLocks.remove(player.getUUID());
+    }
+
+    private void tickMovementLocks(MinecraftServer server) {
+        if (movementLocks.isEmpty()) {
+            return;
+        }
+
+        Iterator<Map.Entry<UUID, MovementLock>> iterator = movementLocks.entrySet().iterator();
+
+        while (iterator.hasNext()) {
+            Map.Entry<UUID, MovementLock> entry = iterator.next();
+
+            ServerPlayer player = server.getPlayerList().getPlayer(entry.getKey());
+
+            if (player == null || player.hasDisconnected()) {
+                iterator.remove();
+                continue;
+            }
+
+            MovementLock lock = entry.getValue();
+
+            String currentDimension = player.level().dimension().location().toString();
+
+            if (!Objects.equals(currentDimension, lock.dimension)) {
+                iterator.remove();
+                continue;
+            }
+
+            lock.ticksLeft--;
+
+            if (lock.ticksLeft <= 0) {
+                iterator.remove();
+                continue;
+            }
+
+            Vec3 velocity = player.getDeltaMovement();
+
+            // Mantiene Y libre para permitir salto/caída.
+            player.setDeltaMovement(0.0D, velocity.y, 0.0D);
+
+            double currentY = player.getY();
+
+            // Mantiene X/Z bloqueado, pero deja la altura libre.
+            if (Math.abs(player.getX() - lock.x) > 0.01D || Math.abs(player.getZ() - lock.z) > 0.01D) {
+                player.teleportTo(lock.x, currentY, lock.z);
+            }
         }
     }
 }
