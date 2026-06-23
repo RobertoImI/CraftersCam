@@ -64,6 +64,15 @@ public class CamCommands {
                                 )
                         )
 
+                        .then(Commands.literal("movement")
+                                .then(Commands.argument("enabled", BoolArgumentType.bool())
+                                        .executes(ctx -> setMovement(
+                                                ctx.getSource(),
+                                                BoolArgumentType.getBool(ctx, "enabled")
+                                        ))
+                                )
+                        )
+
                         .then(Commands.literal("point")
                                 .then(Commands.literal("save")
                                         .then(Commands.argument("id", StringArgumentType.word())
@@ -108,6 +117,15 @@ public class CamCommands {
                                                                 ))
                                                         )
                                                 )
+                                        )
+                                )
+
+                                .then(Commands.literal("showall")
+                                        .then(Commands.argument("enabled", BoolArgumentType.bool())
+                                                .executes(ctx -> showAllPoints(
+                                                        ctx.getSource(),
+                                                        BoolArgumentType.getBool(ctx, "enabled")
+                                                ))
                                         )
                                 )
                         )
@@ -306,7 +324,8 @@ public class CamCommands {
                 + "fadeIn=" + (settings.fadeInTicks / 20.0F) + "s, "
                 + "fadeOut=" + (settings.fadeOutTicks / 20.0F) + "s, "
                 + "bars=" + settings.showBars + ", "
-                + "hideHudAll=" + settings.hideHudAll;
+                + "hideHudAll=" + settings.hideHudAll + ", "
+                + "movement=" + settings.allowMovement;
 
         source.sendSuccess(() -> Component.literal(text), false);
         return 1;
@@ -327,6 +346,32 @@ public class CamCommands {
     private static int setHideHud(CommandSourceStack source, boolean enabled) {
         MANAGER.setHideHudAll(source.getServer(), enabled);
         source.sendSuccess(() -> Component.literal("Ocultar HUD completo: " + enabled), false);
+        return 1;
+    }
+
+    private static int setMovement(CommandSourceStack source, boolean enabled) {
+        MANAGER.setAllowMovement(source.getServer(), enabled);
+
+        if (enabled) {
+            source.sendSuccess(() -> Component.literal("Movimiento durante cinemáticas: true. Los jugadores podrán caminar, girar y brincar."), false);
+        } else {
+            source.sendSuccess(() -> Component.literal("Movimiento durante cinemáticas: false. Los jugadores podrán girar y brincar, pero no caminar."), false);
+        }
+
+        return 1;
+    }
+
+    private static int showAllPoints(CommandSourceStack source, boolean enabled) throws CommandSyntaxException {
+        ServerPlayer player = source.getPlayerOrException();
+
+        MANAGER.setShowAllPoints(player, enabled);
+
+        if (enabled) {
+            source.sendSuccess(() -> Component.literal("Mostrando puntos de cámara en esta dimensión."), false);
+        } else {
+            source.sendSuccess(() -> Component.literal("Puntos de cámara ocultos."), false);
+        }
+
         return 1;
     }
 

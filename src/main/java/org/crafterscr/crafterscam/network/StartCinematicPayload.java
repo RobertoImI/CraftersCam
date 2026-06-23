@@ -14,7 +14,8 @@ public record StartCinematicPayload(
         int fadeInTicks,
         int fadeOutTicks,
         boolean showBars,
-        boolean hideHudAll
+        boolean hideHudAll,
+        boolean allowMovement
 ) implements CustomPacketPayload {
     public static final Type<StartCinematicPayload> TYPE = new Type<>(
             ResourceLocation.fromNamespaceAndPath(CraftersCam.MOD_ID, "start_cinematic")
@@ -40,6 +41,7 @@ public record StartCinematicPayload(
         buffer.writeVarInt(fadeOutTicks);
         buffer.writeBoolean(showBars);
         buffer.writeBoolean(hideHudAll);
+        buffer.writeBoolean(allowMovement);
     }
 
     private static StartCinematicPayload read(RegistryFriendlyByteBuf buffer) {
@@ -54,8 +56,16 @@ public record StartCinematicPayload(
         int fadeOutTicks = buffer.readVarInt();
         boolean showBars = buffer.readBoolean();
         boolean hideHudAll = buffer.readBoolean();
+        boolean allowMovement = buffer.readBoolean();
 
-        return new StartCinematicPayload(segments, fadeInTicks, fadeOutTicks, showBars, hideHudAll);
+        return new StartCinematicPayload(
+                segments,
+                fadeInTicks,
+                fadeOutTicks,
+                showBars,
+                hideHudAll,
+                allowMovement
+        );
     }
 
     @Override

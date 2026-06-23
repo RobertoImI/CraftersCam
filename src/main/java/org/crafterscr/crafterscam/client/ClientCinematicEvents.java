@@ -16,6 +16,11 @@ import org.crafterscr.crafterscam.CraftersCam;
 @EventBusSubscriber(modid = CraftersCam.MOD_ID, value = Dist.CLIENT)
 public class ClientCinematicEvents {
     @SubscribeEvent
+    public static void onClientTickPre(ClientTickEvent.Pre event) {
+        ClientCinematicController.beforeClientTick();
+    }
+
+    @SubscribeEvent
     public static void onClientTick(ClientTickEvent.Post event) {
         ClientCinematicController.tick();
     }

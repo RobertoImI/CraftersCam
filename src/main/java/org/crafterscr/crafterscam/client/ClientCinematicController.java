@@ -1,7 +1,9 @@
 package org.crafterscr.crafterscam.client;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.util.Mth;
+import net.minecraft.world.phys.Vec3;
 import org.crafterscr.crafterscam.network.NetCameraPoint;
 import org.crafterscr.crafterscam.network.NetCameraSegment;
 
@@ -21,6 +23,7 @@ public class ClientCinematicController {
     private static int fadeOutTicks = 10;
     private static boolean showBars = true;
     private static boolean hideHudAll = true;
+    private static boolean allowMovement = true;
 
     private static ClientCinematicCameraEntity cameraEntity;
     private static float currentFov = 70.0F;
@@ -30,7 +33,8 @@ public class ClientCinematicController {
             int incomingFadeInTicks,
             int incomingFadeOutTicks,
             boolean incomingShowBars,
-            boolean incomingHideHudAll
+            boolean incomingHideHudAll,
+            boolean incomingAllowMovement
     ) {
         Minecraft minecraft = Minecraft.getInstance();
 
@@ -54,6 +58,7 @@ public class ClientCinematicController {
         fadeOutTicks = Math.max(0, incomingFadeOutTicks);
         showBars = incomingShowBars;
         hideHudAll = incomingHideHudAll;
+        allowMovement = incomingAllowMovement;
 
         active = true;
 
@@ -87,6 +92,13 @@ public class ClientCinematicController {
         fadeOutTicks = 10;
         showBars = true;
         hideHudAll = true;
+        allowMovement = true;
+    }
+
+    public static void beforeClientTick() {
+        if (active && !allowMovement) {
+            blockHorizontalMovement();
+        }
     }
 
     public static void tick() {
@@ -99,6 +111,10 @@ public class ClientCinematicController {
         if (minecraft.level == null || minecraft.player == null || segments.isEmpty()) {
             stop();
             return;
+        }
+
+        if (!allowMovement) {
+            blockHorizontalMovement();
         }
 
         if (cameraEntity == null || cameraEntity.level() != minecraft.level) {
@@ -128,6 +144,34 @@ public class ClientCinematicController {
         }
     }
 
+    private static void blockHorizontalMovement() {
+        Minecraft minecraft = Minecraft.getInstance();
+        LocalPlayer player = minecraft.player;
+
+        if (player == null) {
+            return;
+        }
+
+        if (player.input != null) {
+            player.input.forwardImpulse = 0.0F;
+            player.input.leftImpulse = 0.0F;
+
+            player.input.up = false;
+            player.input.down = false;
+            player.input.left = false;
+            player.input.right = false;
+
+            // No tocamos player.input.jumping.
+            // Así el jugador puede brincar, pero no caminar.
+        }
+
+        Vec3 velocity = player.getDeltaMovement();
+
+        // Bloquea desplazamiento horizontal.
+        // Mantiene Y para permitir salto/caída.
+        player.setDeltaMovement(0.0D, velocity.y, 0.0D);
+    }
+
     public static boolean isActive() {
         return active;
     }
@@ -142,6 +186,10 @@ public class ClientCinematicController {
 
     public static boolean shouldHideHudAll() {
         return active && hideHudAll;
+    }
+
+    public static boolean shouldAllowMovement() {
+        return allowMovement;
     }
 
     public static float getFadeAlpha() {
@@ -213,9 +261,9 @@ public class ClientCinematicController {
         t = Mth.clamp(t, 0.0F, 1.0F);
 
         return switch (easing) {
-            case 0 -> t; // LINEAR
-            case 2 -> t * t; // EASE_IN
-            case 3 -> 1.0F - (1.0F - t) * (1.0F - t); // EASE_OUT
+            case 0 -> t;
+            case 2 -> t * t;
+            case 3 -> 1.0F - (1.0F - t) * (1.0F - t);
             case 4 -> {
                 if (t < 0.5F) {
                     yield 2.0F * t * t;
@@ -223,7 +271,7 @@ public class ClientCinematicController {
 
                 yield 1.0F - (float) Math.pow(-2.0F * t + 2.0F, 2.0F) / 2.0F;
             }
-            case 1 -> t * t * (3.0F - 2.0F * t); // SMOOTH
+            case 1 -> t * t * (3.0F - 2.0F * t);
             default -> t * t * (3.0F - 2.0F * t);
         };
     }

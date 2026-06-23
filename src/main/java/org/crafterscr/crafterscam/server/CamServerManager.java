@@ -1,12 +1,15 @@
 package org.crafterscr.crafterscam.server;
 
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.crafterscr.crafterscam.camera.*;
 import org.crafterscr.crafterscam.network.NetCameraSegment;
 import org.crafterscr.crafterscam.network.StartCinematicPayload;
 import org.crafterscr.crafterscam.network.StopCinematicPayload;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.*;
 
@@ -14,6 +17,9 @@ public class CamServerManager {
     public static final CamServerManager INSTANCE = new CamServerManager();
 
     private final CamStorage storage = new CamStorage();
+
+    private final Set<UUID> showAllViewers = new HashSet<>();
+    private int showTickCounter = 0;
 
     private CamServerManager() {
     }
@@ -45,6 +51,103 @@ public class CamServerManager {
     public void setHideHudAll(MinecraftServer server, boolean enabled) {
         storage.data(server).settings.hideHudAll = enabled;
         storage.save(server);
+    }
+
+    public void setAllowMovement(MinecraftServer server, boolean enabled) {
+        storage.data(server).settings.allowMovement = enabled;
+        storage.save(server);
+    }
+
+    public void setShowAllPoints(ServerPlayer player, boolean enabled) {
+        if (enabled) {
+            showAllViewers.add(player.getUUID());
+        } else {
+            showAllViewers.remove(player.getUUID());
+        }
+    }
+
+    public boolean isShowingAllPoints(ServerPlayer player) {
+        return showAllViewers.contains(player.getUUID());
+    }
+
+    public void tickShowPoints(MinecraftServer server) {
+        if (showAllViewers.isEmpty()) {
+            return;
+        }
+
+        showTickCounter++;
+
+        if (showTickCounter < 8) {
+            return;
+        }
+
+        showTickCounter = 0;
+
+        Iterator<UUID> iterator = showAllViewers.iterator();
+
+        while (iterator.hasNext()) {
+            UUID uuid = iterator.next();
+            ServerPlayer player = server.getPlayerList().getPlayer(uuid);
+
+            if (player == null || player.hasDisconnected()) {
+                iterator.remove();
+                continue;
+            }
+
+            showPointsToPlayer(server, player);
+        }
+    }
+
+    private void showPointsToPlayer(MinecraftServer server, ServerPlayer player) {
+        CamStorage.CamData data = storage.data(server);
+
+        if (!(player.level() instanceof ServerLevel level)) {
+            return;
+        }
+
+        String playerDimension = player.level().dimension().location().toString();
+
+        for (CameraPoint point : data.points.values()) {
+            if (!Objects.equals(point.dimension, playerDimension)) {
+                continue;
+            }
+
+            // Partícula principal donde está la cámara.
+            level.sendParticles(
+                    player,
+                    ParticleTypes.END_ROD,
+                    true,
+                    point.x,
+                    point.y,
+                    point.z,
+                    2,
+                    0.05D,
+                    0.05D,
+                    0.05D,
+                    0.01D
+            );
+
+            // Línea indicando hacia dónde mira la cámara.
+            Vec3 direction = Vec3.directionFromRotation(point.pitch, point.yaw).normalize();
+
+            for (int i = 1; i <= 8; i++) {
+                double distance = i * 0.35D;
+
+                level.sendParticles(
+                        player,
+                        ParticleTypes.ELECTRIC_SPARK,
+                        true,
+                        point.x + direction.x * distance,
+                        point.y + direction.y * distance,
+                        point.z + direction.z * distance,
+                        1,
+                        0.0D,
+                        0.0D,
+                        0.0D,
+                        0.0D
+                );
+            }
+        }
     }
 
     public boolean isValidId(String id) {
@@ -274,7 +377,8 @@ public class CamServerManager {
                     settings.fadeInTicks,
                     settings.fadeOutTicks,
                     settings.showBars,
-                    settings.hideHudAll
+                    settings.hideHudAll,
+                    settings.allowMovement
             ));
 
             sent++;

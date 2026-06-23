@@ -6,6 +6,10 @@ public class CamVisualSettings {
     public boolean showBars = true;
     public boolean hideHudAll = true;
 
+    // Si es true, los jugadores pueden caminar durante la cinemática.
+    // Si es false, pueden girar y brincar, pero no caminar.
+    public boolean allowMovement = true;
+
     public CamVisualSettings() {
     }
 
@@ -15,6 +19,7 @@ public class CamVisualSettings {
         copy.fadeOutTicks = this.fadeOutTicks;
         copy.showBars = this.showBars;
         copy.hideHudAll = this.hideHudAll;
+        copy.allowMovement = this.allowMovement;
         return copy;
     }
 }

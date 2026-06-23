@@ -28,7 +28,8 @@ public class ClientPayloadHandler {
                     payload.fadeInTicks(),
                     payload.fadeOutTicks(),
                     payload.showBars(),
-                    payload.hideHudAll()
+                    payload.hideHudAll(),
+                    payload.allowMovement()
             );
         }
 
