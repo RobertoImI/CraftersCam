@@ -5,6 +5,7 @@ import com.google.gson.GsonBuilder;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.storage.LevelResource;
 import org.crafterscr.crafterscam.CraftersCam;
+import org.crafterscr.crafterscam.camera.CamVisualSettings;
 import org.crafterscr.crafterscam.camera.CameraPoint;
 import org.crafterscr.crafterscam.camera.CameraSequence;
 
@@ -78,6 +79,7 @@ public class CamStorage {
     public static class CamData {
         public Map<String, CameraPoint> points = new LinkedHashMap<>();
         public Map<String, CameraSequence> sequences = new LinkedHashMap<>();
+        public CamVisualSettings settings = new CamVisualSettings();
 
         public void fixNulls() {
             if (points == null) {
@@ -87,6 +89,13 @@ public class CamStorage {
             if (sequences == null) {
                 sequences = new LinkedHashMap<>();
             }
+
+            if (settings == null) {
+                settings = new CamVisualSettings();
+            }
+
+            settings.fadeInTicks = Math.max(0, settings.fadeInTicks);
+            settings.fadeOutTicks = Math.max(0, settings.fadeOutTicks);
         }
     }
 }

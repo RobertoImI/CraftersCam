@@ -14,10 +14,24 @@ public class ClientCinematicController {
     private static int segmentIndex = 0;
     private static int segmentTick = 0;
 
+    private static int elapsedTicks = 0;
+    private static int totalTicks = 0;
+
+    private static int fadeInTicks = 10;
+    private static int fadeOutTicks = 10;
+    private static boolean showBars = true;
+    private static boolean hideHudAll = true;
+
     private static ClientCinematicCameraEntity cameraEntity;
     private static float currentFov = 70.0F;
 
-    public static void start(List<NetCameraSegment> incomingSegments) {
+    public static void start(
+            List<NetCameraSegment> incomingSegments,
+            int incomingFadeInTicks,
+            int incomingFadeOutTicks,
+            boolean incomingShowBars,
+            boolean incomingHideHudAll
+    ) {
         Minecraft minecraft = Minecraft.getInstance();
 
         if (minecraft.level == null || minecraft.player == null || incomingSegments == null || incomingSegments.isEmpty()) {
@@ -29,6 +43,18 @@ public class ClientCinematicController {
         segments = List.copyOf(incomingSegments);
         segmentIndex = 0;
         segmentTick = 0;
+        elapsedTicks = 0;
+
+        totalTicks = 0;
+        for (NetCameraSegment segment : segments) {
+            totalTicks += Math.max(1, segment.durationTicks());
+        }
+
+        fadeInTicks = Math.max(0, incomingFadeInTicks);
+        fadeOutTicks = Math.max(0, incomingFadeOutTicks);
+        showBars = incomingShowBars;
+        hideHudAll = incomingHideHudAll;
+
         active = true;
 
         cameraEntity = new ClientCinematicCameraEntity(minecraft.level);
@@ -51,8 +77,16 @@ public class ClientCinematicController {
         segments = List.of();
         segmentIndex = 0;
         segmentTick = 0;
+        elapsedTicks = 0;
+        totalTicks = 0;
+
         cameraEntity = null;
         currentFov = 70.0F;
+
+        fadeInTicks = 10;
+        fadeOutTicks = 10;
+        showBars = true;
+        hideHudAll = true;
     }
 
     public static void tick() {
@@ -82,6 +116,7 @@ public class ClientCinematicController {
         currentFov = frame.fov();
 
         segmentTick++;
+        elapsedTicks++;
 
         if (segmentTick >= Math.max(1, segment.durationTicks())) {
             segmentIndex++;
@@ -99,6 +134,38 @@ public class ClientCinematicController {
 
     public static float getCurrentFov() {
         return currentFov;
+    }
+
+    public static boolean shouldShowBars() {
+        return active && showBars;
+    }
+
+    public static boolean shouldHideHudAll() {
+        return active && hideHudAll;
+    }
+
+    public static float getFadeAlpha() {
+        if (!active || totalTicks <= 0) {
+            return 0.0F;
+        }
+
+        float alpha = 0.0F;
+
+        if (fadeInTicks > 0 && elapsedTicks < fadeInTicks) {
+            float t = Mth.clamp(elapsedTicks / (float) fadeInTicks, 0.0F, 1.0F);
+            alpha = Math.max(alpha, 1.0F - t);
+        }
+
+        if (fadeOutTicks > 0) {
+            int remaining = totalTicks - elapsedTicks;
+
+            if (remaining < fadeOutTicks) {
+                float t = 1.0F - Mth.clamp(remaining / (float) fadeOutTicks, 0.0F, 1.0F);
+                alpha = Math.max(alpha, t);
+            }
+        }
+
+        return Mth.clamp(alpha, 0.0F, 1.0F);
     }
 
     private static CameraFrame buildFrame(NetCameraSegment segment, int tick) {
@@ -143,10 +210,21 @@ public class ClientCinematicController {
     }
 
     private static float applyEasing(int easing, float t) {
-        if (easing == 1) {
-            return t * t * (3.0F - 2.0F * t);
-        }
+        t = Mth.clamp(t, 0.0F, 1.0F);
 
-        return t;
+        return switch (easing) {
+            case 0 -> t; // LINEAR
+            case 2 -> t * t; // EASE_IN
+            case 3 -> 1.0F - (1.0F - t) * (1.0F - t); // EASE_OUT
+            case 4 -> {
+                if (t < 0.5F) {
+                    yield 2.0F * t * t;
+                }
+
+                yield 1.0F - (float) Math.pow(-2.0F * t + 2.0F, 2.0F) / 2.0F;
+            }
+            case 1 -> t * t * (3.0F - 2.0F * t); // SMOOTH
+            default -> t * t * (3.0F - 2.0F * t);
+        };
     }
 }

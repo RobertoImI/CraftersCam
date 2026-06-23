@@ -23,7 +23,13 @@ public class ClientPayloadHandler {
 
     private static class ClientOnly {
         private static void start(StartCinematicPayload payload) {
-            org.crafterscr.crafterscam.client.ClientCinematicController.start(payload.segments());
+            org.crafterscr.crafterscam.client.ClientCinematicController.start(
+                    payload.segments(),
+                    payload.fadeInTicks(),
+                    payload.fadeOutTicks(),
+                    payload.showBars(),
+                    payload.hideHudAll()
+            );
         }
 
         private static void stop() {

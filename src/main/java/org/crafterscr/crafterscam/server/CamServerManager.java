@@ -26,6 +26,27 @@ public class CamServerManager {
         return new ArrayList<>(storage.data(server).sequences.keySet());
     }
 
+    public CamVisualSettings settings(MinecraftServer server) {
+        return storage.data(server).settings;
+    }
+
+    public void setFade(MinecraftServer server, int fadeInSeconds, int fadeOutSeconds) {
+        CamVisualSettings settings = storage.data(server).settings;
+        settings.fadeInTicks = Math.max(0, fadeInSeconds * 20);
+        settings.fadeOutTicks = Math.max(0, fadeOutSeconds * 20);
+        storage.save(server);
+    }
+
+    public void setBars(MinecraftServer server, boolean enabled) {
+        storage.data(server).settings.showBars = enabled;
+        storage.save(server);
+    }
+
+    public void setHideHudAll(MinecraftServer server, boolean enabled) {
+        storage.data(server).settings.hideHudAll = enabled;
+        storage.save(server);
+    }
+
     public boolean isValidId(String id) {
         return id != null && id.matches("[a-zA-Z0-9_\\-.]+");
     }
@@ -84,6 +105,24 @@ public class CamServerManager {
         return true;
     }
 
+    public UndoResult undoSequence(MinecraftServer server, String id) {
+        CamStorage.CamData data = storage.data(server);
+        CameraSequence sequence = data.sequences.get(id);
+
+        if (sequence == null) {
+            return UndoResult.fail("No existe la secuencia: " + id);
+        }
+
+        if (sequence.steps.isEmpty()) {
+            return UndoResult.fail("La secuencia ya está vacía: " + id);
+        }
+
+        CameraStep removed = sequence.steps.remove(sequence.steps.size() - 1);
+        storage.save(server);
+
+        return UndoResult.ok("Se borró el último paso: " + removed.type + " " + removed.from + " -> " + removed.to);
+    }
+
     public boolean addHold(MinecraftServer server, String sequenceId, String pointId, int seconds) {
         CamStorage.CamData data = storage.data(server);
 
@@ -97,7 +136,7 @@ public class CamServerManager {
         return true;
     }
 
-    public boolean addMove(MinecraftServer server, String sequenceId, String fromPoint, String toPoint, int seconds) {
+    public boolean addMove(MinecraftServer server, String sequenceId, String fromPoint, String toPoint, int seconds, String easing) {
         CamStorage.CamData data = storage.data(server);
 
         if (!data.points.containsKey(fromPoint) || !data.points.containsKey(toPoint)) {
@@ -105,7 +144,7 @@ public class CamServerManager {
         }
 
         CameraSequence sequence = data.sequences.computeIfAbsent(sequenceId, CameraSequence::new);
-        sequence.steps.add(CameraStep.move(fromPoint, toPoint, seconds));
+        sequence.steps.add(CameraStep.move(fromPoint, toPoint, seconds, easing));
         storage.save(server);
         return true;
     }
@@ -128,7 +167,7 @@ public class CamServerManager {
         return addHold(server, sequenceId, pointId, seconds);
     }
 
-    public boolean moveViewHere(MinecraftServer server, ServerPlayer player, String sequenceId, String pointId, int seconds, float fov) {
+    public boolean moveViewHere(MinecraftServer server, ServerPlayer player, String sequenceId, String pointId, int seconds, float fov, String easing) {
         CamStorage.CamData data = storage.data(server);
         CameraSequence sequence = data.sequences.computeIfAbsent(sequenceId, CameraSequence::new);
 
@@ -139,7 +178,7 @@ public class CamServerManager {
         if (previousPoint == null || !data.points.containsKey(previousPoint)) {
             sequence.steps.add(CameraStep.hold(pointId, seconds));
         } else {
-            sequence.steps.add(CameraStep.move(previousPoint, pointId, seconds));
+            sequence.steps.add(CameraStep.move(previousPoint, pointId, seconds, easing));
         }
 
         storage.save(server);
@@ -155,7 +194,7 @@ public class CamServerManager {
         }
 
         NetCameraSegment segment = NetCameraSegment.hold(point.toNetwork(), Math.max(1, seconds * 20));
-        return sendToCompatibleTargets(point.dimension, List.of(segment), targets);
+        return sendToCompatibleTargets(server, point.dimension, List.of(segment), targets);
     }
 
     public PlayResult playSequence(MinecraftServer server, String sequenceId, Collection<ServerPlayer> targets) {
@@ -205,7 +244,7 @@ public class CamServerManager {
             ));
         }
 
-        return sendToCompatibleTargets(requiredDimension, networkSegments, targets);
+        return sendToCompatibleTargets(server, requiredDimension, networkSegments, targets);
     }
 
     public int stop(Collection<ServerPlayer> targets) {
@@ -219,7 +258,8 @@ public class CamServerManager {
         return count;
     }
 
-    private PlayResult sendToCompatibleTargets(String requiredDimension, List<NetCameraSegment> segments, Collection<ServerPlayer> targets) {
+    private PlayResult sendToCompatibleTargets(MinecraftServer server, String requiredDimension, List<NetCameraSegment> segments, Collection<ServerPlayer> targets) {
+        CamVisualSettings settings = settings(server);
         int sent = 0;
 
         for (ServerPlayer player : targets) {
@@ -229,7 +269,14 @@ public class CamServerManager {
                 continue;
             }
 
-            PacketDistributor.sendToPlayer(player, new StartCinematicPayload(segments));
+            PacketDistributor.sendToPlayer(player, new StartCinematicPayload(
+                    segments,
+                    settings.fadeInTicks,
+                    settings.fadeOutTicks,
+                    settings.showBars,
+                    settings.hideHudAll
+            ));
+
             sent++;
         }
 
@@ -247,6 +294,16 @@ public class CamServerManager {
 
         public static PlayResult fail(String message) {
             return new PlayResult(false, 0, message);
+        }
+    }
+
+    public record UndoResult(boolean success, String message) {
+        public static UndoResult ok(String message) {
+            return new UndoResult(true, message);
+        }
+
+        public static UndoResult fail(String message) {
+            return new UndoResult(false, message);
         }
     }
 }

@@ -1,8 +1,10 @@
 package org.crafterscr.crafterscam.command;
 
+import com.mojang.brigadier.arguments.BoolArgumentType;
 import com.mojang.brigadier.arguments.FloatArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
@@ -11,9 +13,9 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import org.crafterscr.crafterscam.camera.CamVisualSettings;
+import org.crafterscr.crafterscam.camera.CameraEasing;
 import org.crafterscr.crafterscam.server.CamServerManager;
-
-import com.mojang.brigadier.exceptions.CommandSyntaxException;
 
 import java.util.Collection;
 import java.util.List;
@@ -25,6 +27,42 @@ public class CamCommands {
         event.getDispatcher().register(
                 Commands.literal("ccam")
                         .requires(source -> source.hasPermission(2))
+
+                        .then(Commands.literal("settings")
+                                .then(Commands.literal("info")
+                                        .executes(ctx -> settingsInfo(ctx.getSource()))
+                                )
+
+                                .then(Commands.literal("fade")
+                                        .then(Commands.argument("inSeconds", IntegerArgumentType.integer(0, 20))
+                                                .then(Commands.argument("outSeconds", IntegerArgumentType.integer(0, 20))
+                                                        .executes(ctx -> setFade(
+                                                                ctx.getSource(),
+                                                                IntegerArgumentType.getInteger(ctx, "inSeconds"),
+                                                                IntegerArgumentType.getInteger(ctx, "outSeconds")
+                                                        ))
+                                                )
+                                        )
+                                )
+
+                                .then(Commands.literal("bars")
+                                        .then(Commands.argument("enabled", BoolArgumentType.bool())
+                                                .executes(ctx -> setBars(
+                                                        ctx.getSource(),
+                                                        BoolArgumentType.getBool(ctx, "enabled")
+                                                ))
+                                        )
+                                )
+
+                                .then(Commands.literal("hidehud")
+                                        .then(Commands.argument("enabled", BoolArgumentType.bool())
+                                                .executes(ctx -> setHideHud(
+                                                        ctx.getSource(),
+                                                        BoolArgumentType.getBool(ctx, "enabled")
+                                                ))
+                                        )
+                                )
+                        )
 
                         .then(Commands.literal("point")
                                 .then(Commands.literal("save")
@@ -95,6 +133,13 @@ public class CamCommands {
                                         )
                                 )
 
+                                .then(Commands.literal("undo")
+                                        .then(Commands.argument("id", StringArgumentType.word())
+                                                .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(MANAGER.sequenceIds(ctx.getSource().getServer()), builder))
+                                                .executes(ctx -> undoSequence(ctx.getSource(), StringArgumentType.getString(ctx, "id")))
+                                        )
+                                )
+
                                 .then(Commands.literal("list")
                                         .executes(ctx -> listSequences(ctx.getSource()))
                                 )
@@ -129,8 +174,20 @@ public class CamCommands {
                                                                                 StringArgumentType.getString(ctx, "seq"),
                                                                                 StringArgumentType.getString(ctx, "from"),
                                                                                 StringArgumentType.getString(ctx, "to"),
-                                                                                IntegerArgumentType.getInteger(ctx, "seconds")
+                                                                                IntegerArgumentType.getInteger(ctx, "seconds"),
+                                                                                "smooth"
                                                                         ))
+                                                                        .then(Commands.argument("easing", StringArgumentType.word())
+                                                                                .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(CameraEasing.suggestions(), builder))
+                                                                                .executes(ctx -> addMove(
+                                                                                        ctx.getSource(),
+                                                                                        StringArgumentType.getString(ctx, "seq"),
+                                                                                        StringArgumentType.getString(ctx, "from"),
+                                                                                        StringArgumentType.getString(ctx, "to"),
+                                                                                        IntegerArgumentType.getInteger(ctx, "seconds"),
+                                                                                        StringArgumentType.getString(ctx, "easing")
+                                                                                ))
+                                                                        )
                                                                 )
                                                         )
                                                 )
@@ -185,7 +242,8 @@ public class CamCommands {
                                                                         StringArgumentType.getString(ctx, "seq"),
                                                                         StringArgumentType.getString(ctx, "point"),
                                                                         IntegerArgumentType.getInteger(ctx, "seconds"),
-                                                                        70.0F
+                                                                        70.0F,
+                                                                        "smooth"
                                                                 ))
                                                                 .then(Commands.argument("fov", FloatArgumentType.floatArg(30.0F, 110.0F))
                                                                         .executes(ctx -> moveViewHere(
@@ -193,8 +251,20 @@ public class CamCommands {
                                                                                 StringArgumentType.getString(ctx, "seq"),
                                                                                 StringArgumentType.getString(ctx, "point"),
                                                                                 IntegerArgumentType.getInteger(ctx, "seconds"),
-                                                                                FloatArgumentType.getFloat(ctx, "fov")
+                                                                                FloatArgumentType.getFloat(ctx, "fov"),
+                                                                                "smooth"
                                                                         ))
+                                                                        .then(Commands.argument("easing", StringArgumentType.word())
+                                                                                .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(CameraEasing.suggestions(), builder))
+                                                                                .executes(ctx -> moveViewHere(
+                                                                                        ctx.getSource(),
+                                                                                        StringArgumentType.getString(ctx, "seq"),
+                                                                                        StringArgumentType.getString(ctx, "point"),
+                                                                                        IntegerArgumentType.getInteger(ctx, "seconds"),
+                                                                                        FloatArgumentType.getFloat(ctx, "fov"),
+                                                                                        StringArgumentType.getString(ctx, "easing")
+                                                                                ))
+                                                                        )
                                                                 )
                                                         )
                                                 )
@@ -227,6 +297,37 @@ public class CamCommands {
                                 )
                         )
         );
+    }
+
+    private static int settingsInfo(CommandSourceStack source) {
+        CamVisualSettings settings = MANAGER.settings(source.getServer());
+
+        String text = "CraftersCam settings: "
+                + "fadeIn=" + (settings.fadeInTicks / 20.0F) + "s, "
+                + "fadeOut=" + (settings.fadeOutTicks / 20.0F) + "s, "
+                + "bars=" + settings.showBars + ", "
+                + "hideHudAll=" + settings.hideHudAll;
+
+        source.sendSuccess(() -> Component.literal(text), false);
+        return 1;
+    }
+
+    private static int setFade(CommandSourceStack source, int inSeconds, int outSeconds) {
+        MANAGER.setFade(source.getServer(), inSeconds, outSeconds);
+        source.sendSuccess(() -> Component.literal("Fade actualizado: entrada " + inSeconds + "s, salida " + outSeconds + "s."), false);
+        return 1;
+    }
+
+    private static int setBars(CommandSourceStack source, boolean enabled) {
+        MANAGER.setBars(source.getServer(), enabled);
+        source.sendSuccess(() -> Component.literal("Barras cinematográficas: " + enabled), false);
+        return 1;
+    }
+
+    private static int setHideHud(CommandSourceStack source, boolean enabled) {
+        MANAGER.setHideHudAll(source.getServer(), enabled);
+        source.sendSuccess(() -> Component.literal("Ocultar HUD completo: " + enabled), false);
+        return 1;
     }
 
     private static int savePoint(CommandSourceStack source, String id, float fov) throws CommandSyntaxException {
@@ -307,6 +408,18 @@ public class CamCommands {
         return 1;
     }
 
+    private static int undoSequence(CommandSourceStack source, String id) {
+        CamServerManager.UndoResult result = MANAGER.undoSequence(source.getServer(), id);
+
+        if (!result.success()) {
+            source.sendFailure(Component.literal(result.message()));
+            return 0;
+        }
+
+        source.sendSuccess(() -> Component.literal(result.message()), false);
+        return 1;
+    }
+
     private static int listSequences(CommandSourceStack source) {
         Collection<String> ids = MANAGER.sequenceIds(source.getServer());
 
@@ -331,15 +444,15 @@ public class CamCommands {
         return 1;
     }
 
-    private static int addMove(CommandSourceStack source, String seq, String from, String to, int seconds) {
-        boolean ok = MANAGER.addMove(source.getServer(), seq, from, to, seconds);
+    private static int addMove(CommandSourceStack source, String seq, String from, String to, int seconds, String easing) {
+        boolean ok = MANAGER.addMove(source.getServer(), seq, from, to, seconds, easing);
 
         if (!ok) {
             source.sendFailure(Component.literal("No se pudo agregar. Revisa que existan los puntos."));
             return 0;
         }
 
-        source.sendSuccess(() -> Component.literal("Agregado MOVE de " + from + " a " + to + " en " + seconds + "s a " + seq), false);
+        source.sendSuccess(() -> Component.literal("Agregado MOVE de " + from + " a " + to + " en " + seconds + "s con " + CameraEasing.safe(easing).name()), false);
         return 1;
     }
 
@@ -368,16 +481,16 @@ public class CamCommands {
         return 1;
     }
 
-    private static int moveViewHere(CommandSourceStack source, String seq, String point, int seconds, float fov) throws CommandSyntaxException {
+    private static int moveViewHere(CommandSourceStack source, String seq, String point, int seconds, float fov, String easing) throws CommandSyntaxException {
         if (!MANAGER.isValidId(point)) {
             source.sendFailure(Component.literal("ID de punto inválido."));
             return 0;
         }
 
         ServerPlayer player = source.getPlayerOrException();
-        MANAGER.moveViewHere(source.getServer(), player, seq, point, seconds, fov);
+        MANAGER.moveViewHere(source.getServer(), player, seq, point, seconds, fov, easing);
 
-        source.sendSuccess(() -> Component.literal("Vista actual guardada como " + point + " y agregada como movimiento a " + seq), false);
+        source.sendSuccess(() -> Component.literal("Vista actual guardada como " + point + " y agregada como movimiento a " + seq + " con " + CameraEasing.safe(easing).name()), false);
         return 1;
     }
 

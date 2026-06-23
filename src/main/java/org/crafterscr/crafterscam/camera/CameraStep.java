@@ -30,13 +30,13 @@ public class CameraStep {
         );
     }
 
-    public static CameraStep move(String fromPoint, String toPoint, int seconds) {
+    public static CameraStep move(String fromPoint, String toPoint, int seconds, String easing) {
         return new CameraStep(
                 StepType.MOVE.name(),
                 fromPoint,
                 toPoint,
                 Math.max(1, seconds * 20),
-                CameraEasing.SMOOTH.name()
+                CameraEasing.safe(easing).name()
         );
     }
 
