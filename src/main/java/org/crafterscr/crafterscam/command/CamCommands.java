@@ -289,6 +289,31 @@ public class CamCommands {
                                         )
                                 )
 
+                                .then(Commands.literal("path")
+                                        .then(Commands.literal("show")
+                                                .then(Commands.argument("id", StringArgumentType.word())
+                                                        .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(MANAGER.sequenceIds(ctx.getSource().getServer()), builder))
+                                                        .executes(ctx -> showSequencePath(
+                                                                ctx.getSource(),
+                                                                StringArgumentType.getString(ctx, "id")
+                                                        ))
+                                                )
+                                        )
+                                        .then(Commands.literal("hide")
+                                                .executes(ctx -> hideSequencePath(ctx.getSource()))
+                                        )
+                                )
+
+                                .then(Commands.literal("preview")
+                                        .then(Commands.argument("id", StringArgumentType.word())
+                                                .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(MANAGER.sequenceIds(ctx.getSource().getServer()), builder))
+                                                .executes(ctx -> previewSequence(
+                                                        ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "id")
+                                                ))
+                                        )
+                                )
+
                                 .then(Commands.literal("play")
                                         .then(Commands.argument("id", StringArgumentType.word())
                                                 .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(MANAGER.sequenceIds(ctx.getSource().getServer()), builder))
@@ -548,6 +573,45 @@ public class CamCommands {
         }
 
         source.sendSuccess(() -> Component.literal(result.message()), false);
+        return result.sent();
+    }
+
+    private static int showSequencePath(CommandSourceStack source, String sequenceId) throws CommandSyntaxException {
+        ServerPlayer player = source.getPlayerOrException();
+        CamServerManager.PathResult result = MANAGER.showSequencePath(source.getServer(), player, sequenceId);
+
+        if (!result.success()) {
+            source.sendFailure(Component.literal(result.message()));
+            return 0;
+        }
+
+        source.sendSuccess(() -> Component.literal(result.message()), false);
+        return 1;
+    }
+
+    private static int hideSequencePath(CommandSourceStack source) throws CommandSyntaxException {
+        ServerPlayer player = source.getPlayerOrException();
+        boolean wasVisible = MANAGER.hideSequencePath(player);
+
+        if (wasVisible) {
+            source.sendSuccess(() -> Component.literal("Trayectoria de cámara oculta."), false);
+        } else {
+            source.sendSuccess(() -> Component.literal("No tenías ninguna trayectoria visible."), false);
+        }
+
+        return 1;
+    }
+
+    private static int previewSequence(CommandSourceStack source, String sequenceId) throws CommandSyntaxException {
+        ServerPlayer player = source.getPlayerOrException();
+        CamServerManager.PlayResult result = MANAGER.previewSequence(source.getServer(), sequenceId, player);
+
+        if (!result.success()) {
+            source.sendFailure(Component.literal(result.message()));
+            return 0;
+        }
+
+        source.sendSuccess(() -> Component.literal("Preview iniciado solo para ti: " + sequenceId), false);
         return result.sent();
     }
 
