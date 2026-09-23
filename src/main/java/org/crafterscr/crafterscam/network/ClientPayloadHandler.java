@@ -29,6 +29,14 @@ public class ClientPayloadHandler {
         });
     }
 
+    public static void handlePointGuide(CameraPointGuidePayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (FMLLoader.getDist() == Dist.CLIENT) {
+                ClientOnly.pointGuide(payload);
+            }
+        });
+    }
+
     private static class ClientOnly {
         private static void start(StartCinematicPayload payload) {
             org.crafterscr.crafterscam.client.ClientCinematicController.start(
@@ -47,6 +55,10 @@ public class ClientPayloadHandler {
 
         private static void path(CameraPathPayload payload) {
             org.crafterscr.crafterscam.client.ClientCameraPathRenderer.apply(payload);
+        }
+
+        private static void pointGuide(CameraPointGuidePayload payload) {
+            org.crafterscr.crafterscam.client.ClientCameraPathRenderer.applyPoints(payload);
         }
     }
 }
