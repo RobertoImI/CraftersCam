@@ -6,6 +6,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.crafterscr.crafterscam.camera.*;
+import org.crafterscr.crafterscam.network.CameraPathPayload;
 import org.crafterscr.crafterscam.network.NetCameraSegment;
 import org.crafterscr.crafterscam.network.StartCinematicPayload;
 import org.crafterscr.crafterscam.network.StopCinematicPayload;
@@ -23,6 +24,7 @@ public class CamServerManager {
     private final CamStorage storage = new CamStorage();
 
     private final Set<UUID> showAllViewers = new HashSet<>();
+    private final Map<UUID, String> sequencePathViewers = new HashMap<>();
     private int showTickCounter = 0;
 
     private final Map<UUID, MovementLock> movementLocks = new HashMap<>();
@@ -47,21 +49,25 @@ public class CamServerManager {
         settings.fadeInTicks = Math.max(0, fadeInSeconds * 20);
         settings.fadeOutTicks = Math.max(0, fadeOutSeconds * 20);
         storage.save(server);
+        refreshPathViewers(server);
     }
 
     public void setBars(MinecraftServer server, boolean enabled) {
         storage.data(server).settings.showBars = enabled;
         storage.save(server);
+        refreshPathViewers(server);
     }
 
     public void setHideHudAll(MinecraftServer server, boolean enabled) {
         storage.data(server).settings.hideHudAll = enabled;
         storage.save(server);
+        refreshPathViewers(server);
     }
 
     public void setAllowMovement(MinecraftServer server, boolean enabled) {
         storage.data(server).settings.allowMovement = enabled;
         storage.save(server);
+        refreshPathViewers(server);
     }
 
     public void setShowAllPoints(ServerPlayer player, boolean enabled) {
@@ -76,8 +82,38 @@ public class CamServerManager {
         return showAllViewers.contains(player.getUUID());
     }
 
+    public PathResult showSequencePath(MinecraftServer server, ServerPlayer player, String sequenceId) {
+        PathDataResult pathData = buildPathData(server, sequenceId);
+
+        if (!pathData.success()) {
+            return PathResult.fail(pathData.message());
+        }
+
+        String playerDimension = player.level().dimension().location().toString();
+
+        if (!Objects.equals(playerDimension, pathData.dimension())) {
+            return PathResult.fail("La secuencia está en " + pathData.dimension() + ". Ve a esa dimensión para visualizarla.");
+        }
+
+        sequencePathViewers.put(player.getUUID(), sequenceId);
+        PacketDistributor.sendToPlayer(player, CameraPathPayload.show(sequenceId, pathData.dimension(), pathData.segments()));
+
+        return PathResult.ok("Mostrando trayectoria de '" + sequenceId + "' solo para ti. MOVE = línea continua; CUT/saltos = línea discontinua.");
+    }
+
+    public boolean hideSequencePath(ServerPlayer player) {
+        boolean removed = sequencePathViewers.remove(player.getUUID()) != null;
+        PacketDistributor.sendToPlayer(player, CameraPathPayload.hidden());
+        return removed;
+    }
+
+    public PlayResult previewSequence(MinecraftServer server, String sequenceId, ServerPlayer player) {
+        return playSequence(server, sequenceId, List.of(player));
+    }
+
     public void tickShowPoints(MinecraftServer server) {
         tickMovementLocks(server);
+        cleanupPathViewers(server);
 
         if (showAllViewers.isEmpty()) {
             return;
@@ -167,6 +203,7 @@ public class CamServerManager {
         CameraPoint point = CameraPoint.fromPlayer(id, player, fov);
         data.points.put(id, point);
         storage.save(server);
+        refreshPathViewers(server);
     }
 
     public boolean removePoint(MinecraftServer server, String id) {
@@ -175,6 +212,7 @@ public class CamServerManager {
 
         if (removed) {
             storage.save(server);
+        refreshPathViewers(server);
         }
 
         return removed;
@@ -189,6 +227,7 @@ public class CamServerManager {
 
         data.sequences.put(id, new CameraSequence(id));
         storage.save(server);
+        refreshPathViewers(server);
         return true;
     }
 
@@ -198,6 +237,7 @@ public class CamServerManager {
 
         if (removed) {
             storage.save(server);
+        refreshPathViewers(server);
         }
 
         return removed;
@@ -213,6 +253,7 @@ public class CamServerManager {
 
         sequence.steps.clear();
         storage.save(server);
+        refreshPathViewers(server);
         return true;
     }
 
@@ -230,6 +271,7 @@ public class CamServerManager {
 
         CameraStep removed = sequence.steps.remove(sequence.steps.size() - 1);
         storage.save(server);
+        refreshPathViewers(server);
 
         return UndoResult.ok("Se borró el último paso: " + removed.type + " " + removed.from + " -> " + removed.to);
     }
@@ -244,6 +286,7 @@ public class CamServerManager {
         CameraSequence sequence = data.sequences.computeIfAbsent(sequenceId, CameraSequence::new);
         sequence.steps.add(CameraStep.hold(pointId, seconds));
         storage.save(server);
+        refreshPathViewers(server);
         return true;
     }
 
@@ -257,6 +300,7 @@ public class CamServerManager {
         CameraSequence sequence = data.sequences.computeIfAbsent(sequenceId, CameraSequence::new);
         sequence.steps.add(CameraStep.move(fromPoint, toPoint, seconds, easing));
         storage.save(server);
+        refreshPathViewers(server);
         return true;
     }
 
@@ -270,6 +314,7 @@ public class CamServerManager {
         CameraSequence sequence = data.sequences.computeIfAbsent(sequenceId, CameraSequence::new);
         sequence.steps.add(CameraStep.cut(pointId));
         storage.save(server);
+        refreshPathViewers(server);
         return true;
     }
 
@@ -293,6 +338,7 @@ public class CamServerManager {
         }
 
         storage.save(server);
+        refreshPathViewers(server);
         return true;
     }
 
@@ -356,6 +402,108 @@ public class CamServerManager {
         }
 
         return sendToCompatibleTargets(server, requiredDimension, networkSegments, targets);
+    }
+
+    private PathDataResult buildPathData(MinecraftServer server, String sequenceId) {
+        CamStorage.CamData data = storage.data(server);
+        CameraSequence sequence = data.sequences.get(sequenceId);
+
+        if (sequence == null) {
+            return PathDataResult.fail("No existe la secuencia: " + sequenceId);
+        }
+
+        if (sequence.steps.isEmpty()) {
+            return PathDataResult.fail("La secuencia está vacía: " + sequenceId);
+        }
+
+        List<NetCameraSegment> networkSegments = new ArrayList<>();
+        String requiredDimension = null;
+
+        for (CameraStep step : sequence.steps) {
+            StepType type = StepType.safe(step.type);
+            CameraEasing easing = CameraEasing.safe(step.easing);
+
+            CameraPoint from = data.points.get(step.from);
+            CameraPoint to = data.points.get(type == StepType.MOVE ? step.to : step.from);
+
+            if (from == null) {
+                return PathDataResult.fail("Falta el punto: " + step.from);
+            }
+
+            if (to == null) {
+                return PathDataResult.fail("Falta el punto: " + step.to);
+            }
+
+            if (requiredDimension == null) {
+                requiredDimension = from.dimension;
+            }
+
+            if (!Objects.equals(requiredDimension, from.dimension) || !Objects.equals(requiredDimension, to.dimension)) {
+                return PathDataResult.fail("Todos los puntos de una secuencia deben estar en la misma dimensión.");
+            }
+
+            networkSegments.add(new NetCameraSegment(
+                    type.networkId(),
+                    from.toNetwork(),
+                    to.toNetwork(),
+                    Math.max(1, step.durationTicks),
+                    easing.networkId()
+            ));
+        }
+
+        return PathDataResult.ok(requiredDimension, networkSegments);
+    }
+
+    private void refreshPathViewers(MinecraftServer server) {
+        if (sequencePathViewers.isEmpty()) {
+            return;
+        }
+
+        Iterator<Map.Entry<UUID, String>> iterator = sequencePathViewers.entrySet().iterator();
+
+        while (iterator.hasNext()) {
+            Map.Entry<UUID, String> entry = iterator.next();
+            ServerPlayer player = server.getPlayerList().getPlayer(entry.getKey());
+
+            if (player == null || player.hasDisconnected()) {
+                iterator.remove();
+                continue;
+            }
+
+            PathDataResult pathData = buildPathData(server, entry.getValue());
+
+            if (!pathData.success()) {
+                PacketDistributor.sendToPlayer(player, CameraPathPayload.hidden());
+                iterator.remove();
+                continue;
+            }
+
+            PacketDistributor.sendToPlayer(
+                    player,
+                    CameraPathPayload.show(entry.getValue(), pathData.dimension(), pathData.segments())
+            );
+        }
+    }
+
+    private void cleanupPathViewers(MinecraftServer server) {
+        if (sequencePathViewers.isEmpty()) {
+            return;
+        }
+
+        sequencePathViewers.entrySet().removeIf(entry -> {
+            ServerPlayer player = server.getPlayerList().getPlayer(entry.getKey());
+            return player == null || player.hasDisconnected();
+        });
+    }
+
+    private record PathDataResult(boolean success, String dimension, List<NetCameraSegment> segments, String message) {
+        private static PathDataResult ok(String dimension, List<NetCameraSegment> segments) {
+            return new PathDataResult(true, dimension, List.copyOf(segments), "");
+        }
+
+        private static PathDataResult fail(String message) {
+            return new PathDataResult(false, "", List.of(), message);
+        }
     }
 
     public int stop(Collection<ServerPlayer> targets) {
@@ -424,6 +572,16 @@ public class CamServerManager {
             this.x = x;
             this.z = z;
             this.ticksLeft = ticksLeft;
+        }
+    }
+
+    public record PathResult(boolean success, String message) {
+        public static PathResult ok(String message) {
+            return new PathResult(true, message);
+        }
+
+        public static PathResult fail(String message) {
+            return new PathResult(false, message);
         }
     }
 
