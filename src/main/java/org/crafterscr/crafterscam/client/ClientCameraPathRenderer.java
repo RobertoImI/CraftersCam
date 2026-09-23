@@ -272,6 +272,18 @@ public final class ClientCameraPathRenderer {
         Vec3 direction = delta.scale(1.0D / length);
         double dashLength = 0.35D;
         double gapLength = 0.22D;
+
+        // Evita generar miles de vértices si existe un CUT enorme entre dos puntos.
+        double patternLength = dashLength + gapLength;
+        int estimatedDashes = Math.max(1, (int) Math.ceil(length / patternLength));
+        int maxDashes = 256;
+
+        if (estimatedDashes > maxDashes) {
+            patternLength = length / maxDashes;
+            dashLength = patternLength * 0.62D;
+            gapLength = patternLength - dashLength;
+        }
+
         double cursor = 0.0D;
 
         while (cursor < length) {
