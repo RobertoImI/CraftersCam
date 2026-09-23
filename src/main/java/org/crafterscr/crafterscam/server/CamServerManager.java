@@ -1,12 +1,15 @@
 package org.crafterscr.crafterscam.server;
 
-import net.minecraft.core.particles.ParticleTypes;
+import com.mojang.brigadier.StringReader;
+import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.crafterscr.crafterscam.camera.*;
 import org.crafterscr.crafterscam.network.CameraPathPayload;
+import org.crafterscr.crafterscam.network.CameraPointGuidePayload;
 import org.crafterscr.crafterscam.network.NetCameraSegment;
 import org.crafterscr.crafterscam.network.StartCinematicPayload;
 import org.crafterscr.crafterscam.network.StopCinematicPayload;
@@ -25,7 +28,6 @@ public class CamServerManager {
 
     private final Set<UUID> showAllViewers = new HashSet<>();
     private final Map<UUID, String> sequencePathViewers = new HashMap<>();
-    private int showTickCounter = 0;
 
     private final Map<UUID, MovementLock> movementLocks = new HashMap<>();
 
@@ -38,6 +40,178 @@ public class CamServerManager {
 
     public Collection<String> sequenceIds(MinecraftServer server) {
         return new ArrayList<>(storage.data(server).sequences.keySet());
+    }
+
+    public Collection<String> groupIds(MinecraftServer server) {
+        return new ArrayList<>(storage.data(server).groups.keySet());
+    }
+
+    public Collection<String> groupMembers(MinecraftServer server, String groupId) {
+        String key = findGroupKey(server, groupId);
+
+        if (key == null) {
+            return List.of();
+        }
+
+        return List.copyOf(storage.data(server).groups.get(key));
+    }
+
+    public boolean createGroup(MinecraftServer server, String groupId) {
+        CamStorage.CamData data = storage.data(server);
+
+        if (findGroupKey(server, groupId) != null) {
+            return false;
+        }
+
+        data.groups.put(groupId, new ArrayList<>());
+        storage.save(server);
+        return true;
+    }
+
+    public boolean deleteGroup(MinecraftServer server, String groupId) {
+        String key = findGroupKey(server, groupId);
+
+        if (key == null) {
+            return false;
+        }
+
+        storage.data(server).groups.remove(key);
+        storage.save(server);
+        return true;
+    }
+
+    public GroupResult addGroupMembers(
+            MinecraftServer server,
+            CommandSourceStack source,
+            String groupId,
+            String targetSpec
+    ) throws CommandSyntaxException {
+        String key = findGroupKey(server, groupId);
+
+        if (key == null) {
+            return GroupResult.fail("No existe el grupo: " + groupId);
+        }
+
+        Collection<ServerPlayer> players = resolveMinecraftPlayers(source, targetSpec);
+        List<String> members = storage.data(server).groups.get(key);
+        int added = 0;
+
+        for (ServerPlayer player : players) {
+            String name = player.getGameProfile().getName();
+
+            if (members.stream().noneMatch(existing -> existing.equalsIgnoreCase(name))) {
+                members.add(name);
+                added++;
+            }
+        }
+
+        if (added > 0) {
+            storage.save(server);
+        }
+
+        return GroupResult.ok(added, "Se añadieron " + added + " jugador(es) a " + key + ".");
+    }
+
+    public GroupResult removeGroupMembers(
+            MinecraftServer server,
+            CommandSourceStack source,
+            String groupId,
+            String targetSpec
+    ) throws CommandSyntaxException {
+        String key = findGroupKey(server, groupId);
+
+        if (key == null) {
+            return GroupResult.fail("No existe el grupo: " + groupId);
+        }
+
+        List<String> members = storage.data(server).groups.get(key);
+        int removed = 0;
+
+        // Permite quitar un miembro offline escribiendo su nombre directamente.
+        if (!targetSpec.startsWith("@")) {
+            Iterator<String> direct = members.iterator();
+
+            while (direct.hasNext()) {
+                if (direct.next().equalsIgnoreCase(targetSpec)) {
+                    direct.remove();
+                    removed++;
+                }
+            }
+
+            if (removed > 0) {
+                storage.save(server);
+                return GroupResult.ok(removed, "Se quitó " + targetSpec + " de " + key + ".");
+            }
+        }
+
+        Collection<ServerPlayer> players = resolveMinecraftPlayers(source, targetSpec);
+        Set<String> names = new HashSet<>();
+
+        for (ServerPlayer player : players) {
+            names.add(player.getGameProfile().getName().toLowerCase(Locale.ROOT));
+        }
+
+        Iterator<String> iterator = members.iterator();
+
+        while (iterator.hasNext()) {
+            if (names.contains(iterator.next().toLowerCase(Locale.ROOT))) {
+                iterator.remove();
+                removed++;
+            }
+        }
+
+        if (removed > 0) {
+            storage.save(server);
+        }
+
+        return GroupResult.ok(removed, "Se quitaron " + removed + " jugador(es) de " + key + ".");
+    }
+
+    public Collection<ServerPlayer> resolveAudience(
+            CommandSourceStack source,
+            String audience
+    ) throws CommandSyntaxException {
+        MinecraftServer server = source.getServer();
+        String groupKey = findGroupKey(server, audience);
+
+        if (groupKey != null) {
+            List<ServerPlayer> players = new ArrayList<>();
+
+            for (String member : storage.data(server).groups.get(groupKey)) {
+                ServerPlayer player = server.getPlayerList().getPlayerByName(member);
+
+                if (player != null && !player.hasDisconnected()) {
+                    players.add(player);
+                }
+            }
+
+            return players;
+        }
+
+        return resolveMinecraftPlayers(source, audience);
+    }
+
+    private Collection<ServerPlayer> resolveMinecraftPlayers(
+            CommandSourceStack source,
+            String targetSpec
+    ) throws CommandSyntaxException {
+        return EntityArgument.players()
+                .parse(new StringReader(targetSpec), source)
+                .findPlayers(source);
+    }
+
+    private String findGroupKey(MinecraftServer server, String groupId) {
+        if (groupId == null) {
+            return null;
+        }
+
+        for (String key : storage.data(server).groups.keySet()) {
+            if (key.equalsIgnoreCase(groupId)) {
+                return key;
+            }
+        }
+
+        return null;
     }
 
     public CamVisualSettings settings(MinecraftServer server) {
@@ -70,11 +244,13 @@ public class CamServerManager {
         refreshPathViewers(server);
     }
 
-    public void setShowAllPoints(ServerPlayer player, boolean enabled) {
+    public void setShowAllPoints(MinecraftServer server, ServerPlayer player, boolean enabled) {
         if (enabled) {
             showAllViewers.add(player.getUUID());
+            PacketDistributor.sendToPlayer(player, buildPointGuidePayload(server));
         } else {
             showAllViewers.remove(player.getUUID());
+            PacketDistributor.sendToPlayer(player, CameraPointGuidePayload.hidden());
         }
     }
 
@@ -114,84 +290,47 @@ public class CamServerManager {
     public void tickShowPoints(MinecraftServer server) {
         tickMovementLocks(server);
         cleanupPathViewers(server);
+        cleanupPointViewers(server);
+    }
 
+    private CameraPointGuidePayload buildPointGuidePayload(MinecraftServer server) {
+        List<CameraPointGuidePayload.GuidePoint> points = new ArrayList<>();
+
+        for (CameraPoint point : storage.data(server).points.values()) {
+            points.add(new CameraPointGuidePayload.GuidePoint(
+                    point.dimension,
+                    point.toNetwork()
+            ));
+        }
+
+        return CameraPointGuidePayload.show(points);
+    }
+
+    private void refreshPointViewers(MinecraftServer server) {
         if (showAllViewers.isEmpty()) {
             return;
         }
 
-        showTickCounter++;
-
-        if (showTickCounter < 8) {
-            return;
-        }
-
-        showTickCounter = 0;
-
+        CameraPointGuidePayload payload = buildPointGuidePayload(server);
         Iterator<UUID> iterator = showAllViewers.iterator();
 
         while (iterator.hasNext()) {
-            UUID uuid = iterator.next();
-            ServerPlayer player = server.getPlayerList().getPlayer(uuid);
+            ServerPlayer player = server.getPlayerList().getPlayer(iterator.next());
 
             if (player == null || player.hasDisconnected()) {
                 iterator.remove();
                 continue;
             }
 
-            showPointsToPlayer(server, player);
+            PacketDistributor.sendToPlayer(player, payload);
         }
     }
 
-    private void showPointsToPlayer(MinecraftServer server, ServerPlayer player) {
-        CamStorage.CamData data = storage.data(server);
-
-        if (!(player.level() instanceof ServerLevel level)) {
-            return;
-        }
-
-        String playerDimension = player.level().dimension().location().toString();
-
-        for (CameraPoint point : data.points.values()) {
-            if (!Objects.equals(point.dimension, playerDimension)) {
-                continue;
-            }
-
-            // Partícula principal donde está la cámara.
-            level.sendParticles(
-                    player,
-                    ParticleTypes.END_ROD,
-                    true,
-                    point.x,
-                    point.y,
-                    point.z,
-                    2,
-                    0.05D,
-                    0.05D,
-                    0.05D,
-                    0.01D
-            );
-
-            // Línea indicando hacia dónde mira la cámara.
-            Vec3 direction = Vec3.directionFromRotation(point.pitch, point.yaw).normalize();
-
-            for (int i = 1; i <= 8; i++) {
-                double distance = i * 0.35D;
-
-                level.sendParticles(
-                        player,
-                        ParticleTypes.ELECTRIC_SPARK,
-                        true,
-                        point.x + direction.x * distance,
-                        point.y + direction.y * distance,
-                        point.z + direction.z * distance,
-                        1,
-                        0.0D,
-                        0.0D,
-                        0.0D,
-                        0.0D
-                );
-            }
-        }
+    private void cleanupPointViewers(MinecraftServer server) {
+        showAllViewers.removeIf(uuid -> {
+            ServerPlayer player = server.getPlayerList().getPlayer(uuid);
+            return player == null || player.hasDisconnected();
+        });
     }
 
     public boolean isValidId(String id) {
@@ -204,6 +343,7 @@ public class CamServerManager {
         data.points.put(id, point);
         storage.save(server);
         refreshPathViewers(server);
+        refreshPointViewers(server);
     }
 
     public boolean removePoint(MinecraftServer server, String id) {
@@ -212,7 +352,8 @@ public class CamServerManager {
 
         if (removed) {
             storage.save(server);
-        refreshPathViewers(server);
+            refreshPathViewers(server);
+            refreshPointViewers(server);
         }
 
         return removed;
@@ -582,6 +723,16 @@ public class CamServerManager {
             this.x = x;
             this.z = z;
             this.ticksLeft = ticksLeft;
+        }
+    }
+
+    public record GroupResult(boolean success, int changed, String message) {
+        public static GroupResult ok(int changed, String message) {
+            return new GroupResult(true, changed, message);
+        }
+
+        public static GroupResult fail(String message) {
+            return new GroupResult(false, 0, message);
         }
     }
 
