@@ -79,6 +79,7 @@ public class CamStorage {
     public static class CamData {
         public Map<String, CameraPoint> points = new LinkedHashMap<>();
         public Map<String, CameraSequence> sequences = new LinkedHashMap<>();
+        public Map<String, java.util.List<String>> groups = new LinkedHashMap<>();
         public CamVisualSettings settings = new CamVisualSettings();
 
         public void fixNulls() {
@@ -88,6 +89,16 @@ public class CamStorage {
 
             if (sequences == null) {
                 sequences = new LinkedHashMap<>();
+            }
+
+            if (groups == null) {
+                groups = new LinkedHashMap<>();
+            }
+
+            for (Map.Entry<String, java.util.List<String>> entry : groups.entrySet()) {
+                if (entry.getValue() == null) {
+                    entry.setValue(new java.util.ArrayList<>());
+                }
             }
 
             if (settings == null) {
