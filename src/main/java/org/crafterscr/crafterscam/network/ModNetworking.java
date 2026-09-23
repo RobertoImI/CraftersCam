@@ -27,5 +27,11 @@ public class ModNetworking {
                         }
                 )
         );
+
+        registrar.playToClient(
+                CameraPathPayload.TYPE,
+                CameraPathPayload.STREAM_CODEC,
+                ClientPayloadHandler::handlePath
+        );
     }
 }
