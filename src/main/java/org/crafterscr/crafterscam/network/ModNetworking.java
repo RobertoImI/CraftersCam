@@ -33,5 +33,11 @@ public class ModNetworking {
                 CameraPathPayload.STREAM_CODEC,
                 ClientPayloadHandler::handlePath
         );
+
+        registrar.playToClient(
+                CameraPointGuidePayload.TYPE,
+                CameraPointGuidePayload.STREAM_CODEC,
+                ClientPayloadHandler::handlePointGuide
+        );
     }
 }
