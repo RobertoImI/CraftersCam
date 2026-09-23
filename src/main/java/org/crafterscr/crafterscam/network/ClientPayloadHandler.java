@@ -21,6 +21,14 @@ public class ClientPayloadHandler {
         });
     }
 
+    public static void handlePath(CameraPathPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (FMLLoader.getDist() == Dist.CLIENT) {
+                ClientOnly.path(payload);
+            }
+        });
+    }
+
     private static class ClientOnly {
         private static void start(StartCinematicPayload payload) {
             org.crafterscr.crafterscam.client.ClientCinematicController.start(
@@ -35,6 +43,10 @@ public class ClientPayloadHandler {
 
         private static void stop() {
             org.crafterscr.crafterscam.client.ClientCinematicController.stop();
+        }
+
+        private static void path(CameraPathPayload payload) {
+            org.crafterscr.crafterscam.client.ClientCameraPathRenderer.apply(payload);
         }
     }
 }
