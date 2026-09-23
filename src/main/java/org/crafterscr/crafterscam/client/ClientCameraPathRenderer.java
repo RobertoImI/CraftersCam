@@ -12,6 +12,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import org.crafterscr.crafterscam.CraftersCam;
 import org.crafterscr.crafterscam.network.CameraPathPayload;
+import org.crafterscr.crafterscam.network.CameraPointGuidePayload;
 import org.crafterscr.crafterscam.network.NetCameraPoint;
 import org.crafterscr.crafterscam.network.NetCameraSegment;
 
@@ -41,6 +42,9 @@ public final class ClientCameraPathRenderer {
     private static String dimension = "";
     private static List<NetCameraSegment> segments = List.of();
 
+    private static boolean pointsVisible = false;
+    private static List<CameraPointGuidePayload.GuidePoint> guidePoints = List.of();
+
     private ClientCameraPathRenderer() {
     }
 
@@ -63,6 +67,17 @@ public final class ClientCameraPathRenderer {
         segments = List.of();
     }
 
+    public static void applyPoints(CameraPointGuidePayload payload) {
+        if (!payload.visible()) {
+            pointsVisible = false;
+            guidePoints = List.of();
+            return;
+        }
+
+        pointsVisible = true;
+        guidePoints = List.copyOf(payload.points());
+    }
+
     public static boolean isVisible() {
         return visible;
     }
@@ -73,7 +88,10 @@ public final class ClientCameraPathRenderer {
 
     @SubscribeEvent
     public static void onRenderLevelStage(RenderLevelStageEvent event) {
-        if (!visible || segments.isEmpty()) {
+        boolean hasPath = visible && !segments.isEmpty();
+        boolean hasPoints = pointsVisible && !guidePoints.isEmpty();
+
+        if (!hasPath && !hasPoints) {
             return;
         }
 
@@ -94,10 +112,6 @@ public final class ClientCameraPathRenderer {
 
         String currentDimension = minecraft.level.dimension().location().toString();
 
-        if (!Objects.equals(currentDimension, dimension)) {
-            return;
-        }
-
         Vec3 cameraPos = event.getCamera().getPosition();
         PoseStack poseStack = event.getPoseStack();
 
@@ -106,8 +120,32 @@ public final class ClientCameraPathRenderer {
 
         poseStack.pushPose();
 
+        if (hasPoints) {
+            for (CameraPointGuidePayload.GuidePoint guidePoint : guidePoints) {
+                if (!Objects.equals(currentDimension, guidePoint.dimension())) {
+                    continue;
+                }
+
+                NetCameraPoint point = guidePoint.point();
+
+                drawCross(
+                        poseStack,
+                        lines,
+                        cameraPos,
+                        toVec(point),
+                        0.16D,
+                        POINT_R,
+                        POINT_G,
+                        POINT_B,
+                        1.0F
+                );
+                drawLookDirection(poseStack, lines, cameraPos, point);
+            }
+        }
+
         NetCameraPoint previousEnd = null;
 
+        if (hasPath && Objects.equals(currentDimension, dimension)) {
         for (NetCameraSegment segment : segments) {
             NetCameraPoint from = segment.from();
             NetCameraPoint to = segment.to();
@@ -190,6 +228,7 @@ public final class ClientCameraPathRenderer {
             } else {
                 previousEnd = from;
             }
+        }
         }
 
         buffers.endBatch(RenderType.lines());
