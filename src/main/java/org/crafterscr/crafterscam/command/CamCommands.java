@@ -17,8 +17,11 @@ import org.crafterscr.crafterscam.camera.CamVisualSettings;
 import org.crafterscr.crafterscam.camera.CameraEasing;
 import org.crafterscr.crafterscam.server.CamServerManager;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 public class CamCommands {
     private static final CamServerManager MANAGER = CamServerManager.INSTANCE;
@@ -73,6 +76,75 @@ public class CamCommands {
                                 )
                         )
 
+                        .then(Commands.literal("group")
+                                .then(Commands.literal("create")
+                                        .then(Commands.argument("id", StringArgumentType.word())
+                                                .executes(ctx -> createGroup(
+                                                        ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "id")
+                                                ))
+                                        )
+                                )
+
+                                .then(Commands.literal("delete")
+                                        .then(Commands.argument("id", StringArgumentType.word())
+                                                .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(MANAGER.groupIds(ctx.getSource().getServer()), builder))
+                                                .executes(ctx -> deleteGroup(
+                                                        ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "id")
+                                                ))
+                                        )
+                                )
+
+                                .then(Commands.literal("list")
+                                        .executes(ctx -> listGroups(ctx.getSource()))
+                                )
+
+                                .then(Commands.literal("members")
+                                        .then(Commands.argument("id", StringArgumentType.word())
+                                                .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(MANAGER.groupIds(ctx.getSource().getServer()), builder))
+                                                .executes(ctx -> listGroupMembers(
+                                                        ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "id")
+                                                ))
+                                        )
+                                )
+
+                                .then(Commands.literal("add")
+                                        .then(Commands.argument("id", StringArgumentType.word())
+                                                .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(MANAGER.groupIds(ctx.getSource().getServer()), builder))
+                                                .then(Commands.argument("members", AudienceArgumentType.audience())
+                                                        .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(playerTargetSuggestions(ctx.getSource()), builder))
+                                                        .executes(ctx -> addGroupMembers(
+                                                                ctx.getSource(),
+                                                                StringArgumentType.getString(ctx, "id"),
+                                                                AudienceArgumentType.getAudience(ctx, "members")
+                                                        ))
+                                                )
+                                        )
+                                )
+
+                                .then(Commands.literal("remove")
+                                        .then(Commands.argument("id", StringArgumentType.word())
+                                                .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(MANAGER.groupIds(ctx.getSource().getServer()), builder))
+                                                .then(Commands.argument("members", AudienceArgumentType.audience())
+                                                        .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(
+                                                                groupMemberSuggestions(
+                                                                        ctx.getSource(),
+                                                                        StringArgumentType.getString(ctx, "id")
+                                                                ),
+                                                                builder
+                                                        ))
+                                                        .executes(ctx -> removeGroupMembers(
+                                                                ctx.getSource(),
+                                                                StringArgumentType.getString(ctx, "id"),
+                                                                AudienceArgumentType.getAudience(ctx, "members")
+                                                        ))
+                                                )
+                                        )
+                                )
+                        )
+
                         .then(Commands.literal("point")
                                 .then(Commands.literal("save")
                                         .then(Commands.argument("id", StringArgumentType.word())
@@ -108,13 +180,48 @@ public class CamCommands {
                                                                 IntegerArgumentType.getInteger(ctx, "seconds"),
                                                                 defaultTargets(ctx.getSource())
                                                         ))
-                                                        .then(Commands.argument("targets", EntityArgument.players())
+                                                        .then(Commands.literal("exclude")
+                                                                .then(Commands.argument("excluded", AudienceArgumentType.audience())
+                                                                        .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(audienceSuggestions(ctx.getSource()), builder))
+                                                                        .executes(ctx -> playPoint(
+                                                                                ctx.getSource(),
+                                                                                StringArgumentType.getString(ctx, "id"),
+                                                                                IntegerArgumentType.getInteger(ctx, "seconds"),
+                                                                                resolveTargets(
+                                                                                        ctx.getSource(),
+                                                                                        null,
+                                                                                        AudienceArgumentType.getAudience(ctx, "excluded")
+                                                                                )
+                                                                        ))
+                                                                )
+                                                        )
+                                                        .then(Commands.argument("targets", AudienceArgumentType.audience())
+                                                                .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(audienceSuggestions(ctx.getSource()), builder))
                                                                 .executes(ctx -> playPoint(
                                                                         ctx.getSource(),
                                                                         StringArgumentType.getString(ctx, "id"),
                                                                         IntegerArgumentType.getInteger(ctx, "seconds"),
-                                                                        EntityArgument.getPlayers(ctx, "targets")
+                                                                        resolveTargets(
+                                                                                ctx.getSource(),
+                                                                                AudienceArgumentType.getAudience(ctx, "targets"),
+                                                                                null
+                                                                        )
                                                                 ))
+                                                                .then(Commands.literal("exclude")
+                                                                        .then(Commands.argument("excluded", AudienceArgumentType.audience())
+                                                                                .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(audienceSuggestions(ctx.getSource()), builder))
+                                                                                .executes(ctx -> playPoint(
+                                                                                        ctx.getSource(),
+                                                                                        StringArgumentType.getString(ctx, "id"),
+                                                                                        IntegerArgumentType.getInteger(ctx, "seconds"),
+                                                                                        resolveTargets(
+                                                                                                ctx.getSource(),
+                                                                                                AudienceArgumentType.getAudience(ctx, "targets"),
+                                                                                                AudienceArgumentType.getAudience(ctx, "excluded")
+                                                                                        )
+                                                                                ))
+                                                                        )
+                                                                )
                                                         )
                                                 )
                                         )
@@ -322,12 +429,45 @@ public class CamCommands {
                                                         StringArgumentType.getString(ctx, "id"),
                                                         defaultTargets(ctx.getSource())
                                                 ))
-                                                .then(Commands.argument("targets", EntityArgument.players())
+                                                .then(Commands.literal("exclude")
+                                                        .then(Commands.argument("excluded", AudienceArgumentType.audience())
+                                                                .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(audienceSuggestions(ctx.getSource()), builder))
+                                                                .executes(ctx -> playSequence(
+                                                                        ctx.getSource(),
+                                                                        StringArgumentType.getString(ctx, "id"),
+                                                                        resolveTargets(
+                                                                                ctx.getSource(),
+                                                                                null,
+                                                                                AudienceArgumentType.getAudience(ctx, "excluded")
+                                                                        )
+                                                                ))
+                                                        )
+                                                )
+                                                .then(Commands.argument("targets", AudienceArgumentType.audience())
+                                                        .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(audienceSuggestions(ctx.getSource()), builder))
                                                         .executes(ctx -> playSequence(
                                                                 ctx.getSource(),
                                                                 StringArgumentType.getString(ctx, "id"),
-                                                                EntityArgument.getPlayers(ctx, "targets")
+                                                                resolveTargets(
+                                                                        ctx.getSource(),
+                                                                        AudienceArgumentType.getAudience(ctx, "targets"),
+                                                                        null
+                                                                )
                                                         ))
+                                                        .then(Commands.literal("exclude")
+                                                                .then(Commands.argument("excluded", AudienceArgumentType.audience())
+                                                                        .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(audienceSuggestions(ctx.getSource()), builder))
+                                                                        .executes(ctx -> playSequence(
+                                                                                ctx.getSource(),
+                                                                                StringArgumentType.getString(ctx, "id"),
+                                                                                resolveTargets(
+                                                                                        ctx.getSource(),
+                                                                                        AudienceArgumentType.getAudience(ctx, "targets"),
+                                                                                        AudienceArgumentType.getAudience(ctx, "excluded")
+                                                                                )
+                                                                        ))
+                                                                )
+                                                        )
                                                 )
                                         )
                                 )
@@ -389,7 +529,7 @@ public class CamCommands {
     private static int showAllPoints(CommandSourceStack source, boolean enabled) throws CommandSyntaxException {
         ServerPlayer player = source.getPlayerOrException();
 
-        MANAGER.setShowAllPoints(player, enabled);
+        MANAGER.setShowAllPoints(source.getServer(), player, enabled);
 
         if (enabled) {
             source.sendSuccess(() -> Component.literal("Mostrando puntos de cámara en esta dimensión."), false);
@@ -435,6 +575,84 @@ public class CamCommands {
 
         source.sendSuccess(() -> Component.literal("Puntos: " + String.join(", ", ids)), false);
         return ids.size();
+    }
+
+    private static int createGroup(CommandSourceStack source, String id) {
+        if (!MANAGER.isValidId(id)) {
+            source.sendFailure(Component.literal("ID inválido. Usa letras, números, _, - o ."));
+            return 0;
+        }
+
+        if (!MANAGER.createGroup(source.getServer(), id)) {
+            source.sendFailure(Component.literal("Ya existe el grupo: " + id));
+            return 0;
+        }
+
+        source.sendSuccess(() -> Component.literal("Grupo creado: " + id), false);
+        return 1;
+    }
+
+    private static int deleteGroup(CommandSourceStack source, String id) {
+        if (!MANAGER.deleteGroup(source.getServer(), id)) {
+            source.sendFailure(Component.literal("No existe el grupo: " + id));
+            return 0;
+        }
+
+        source.sendSuccess(() -> Component.literal("Grupo eliminado: " + id), false);
+        return 1;
+    }
+
+    private static int listGroups(CommandSourceStack source) {
+        Collection<String> groups = MANAGER.groupIds(source.getServer());
+
+        if (groups.isEmpty()) {
+            source.sendSuccess(() -> Component.literal("No hay grupos de audiencia."), false);
+            return 0;
+        }
+
+        source.sendSuccess(() -> Component.literal("Grupos: " + String.join(", ", groups)), false);
+        return groups.size();
+    }
+
+    private static int listGroupMembers(CommandSourceStack source, String id) {
+        if (MANAGER.groupIds(source.getServer()).stream().noneMatch(group -> group.equalsIgnoreCase(id))) {
+            source.sendFailure(Component.literal("No existe el grupo: " + id));
+            return 0;
+        }
+
+        Collection<String> members = MANAGER.groupMembers(source.getServer(), id);
+
+        if (members.isEmpty()) {
+            source.sendSuccess(() -> Component.literal("El grupo " + id + " no tiene miembros."), false);
+            return 0;
+        }
+
+        source.sendSuccess(() -> Component.literal("Miembros de " + id + ": " + String.join(", ", members)), false);
+        return members.size();
+    }
+
+    private static int addGroupMembers(CommandSourceStack source, String id, String targetSpec) throws CommandSyntaxException {
+        CamServerManager.GroupResult result = MANAGER.addGroupMembers(source.getServer(), source, id, targetSpec);
+
+        if (!result.success()) {
+            source.sendFailure(Component.literal(result.message()));
+            return 0;
+        }
+
+        source.sendSuccess(() -> Component.literal(result.message()), false);
+        return Math.max(1, result.changed());
+    }
+
+    private static int removeGroupMembers(CommandSourceStack source, String id, String targetSpec) throws CommandSyntaxException {
+        CamServerManager.GroupResult result = MANAGER.removeGroupMembers(source.getServer(), source, id, targetSpec);
+
+        if (!result.success()) {
+            source.sendFailure(Component.literal(result.message()));
+            return 0;
+        }
+
+        source.sendSuccess(() -> Component.literal(result.message()), false);
+        return Math.max(1, result.changed());
     }
 
     private static int createSequence(CommandSourceStack source, String id) {
@@ -632,6 +850,73 @@ public class CamCommands {
 
         source.sendSuccess(() -> Component.literal("Cinemática detenida para " + stopped + " jugador(es)."), false);
         return stopped;
+    }
+
+    private static Collection<ServerPlayer> resolveTargets(
+            CommandSourceStack source,
+            String included,
+            String excluded
+    ) throws CommandSyntaxException {
+        Collection<ServerPlayer> base = included == null
+                ? defaultTargets(source)
+                : MANAGER.resolveAudience(source, included);
+
+        if (excluded == null) {
+            return new ArrayList<>(base);
+        }
+
+        Collection<ServerPlayer> excludedPlayers = MANAGER.resolveAudience(source, excluded);
+        Set<java.util.UUID> excludedIds = new java.util.HashSet<>();
+
+        for (ServerPlayer player : excludedPlayers) {
+            excludedIds.add(player.getUUID());
+        }
+
+        List<ServerPlayer> result = new ArrayList<>();
+
+        for (ServerPlayer player : base) {
+            if (!excludedIds.contains(player.getUUID())) {
+                result.add(player);
+            }
+        }
+
+        return result;
+    }
+
+    private static Collection<String> audienceSuggestions(CommandSourceStack source) {
+        LinkedHashSet<String> suggestions = new LinkedHashSet<>();
+        suggestions.add("@a");
+        suggestions.add("@s");
+        suggestions.add("@p");
+        suggestions.add("@r");
+
+        for (ServerPlayer player : source.getServer().getPlayerList().getPlayers()) {
+            suggestions.add(player.getGameProfile().getName());
+        }
+
+        suggestions.addAll(MANAGER.groupIds(source.getServer()));
+        return suggestions;
+    }
+
+    private static Collection<String> playerTargetSuggestions(CommandSourceStack source) {
+        LinkedHashSet<String> suggestions = new LinkedHashSet<>();
+        suggestions.add("@a");
+        suggestions.add("@s");
+        suggestions.add("@p");
+        suggestions.add("@r");
+
+        for (ServerPlayer player : source.getServer().getPlayerList().getPlayers()) {
+            suggestions.add(player.getGameProfile().getName());
+        }
+
+        return suggestions;
+    }
+
+    private static Collection<String> groupMemberSuggestions(CommandSourceStack source, String groupId) {
+        LinkedHashSet<String> suggestions = new LinkedHashSet<>();
+        suggestions.addAll(MANAGER.groupMembers(source.getServer(), groupId));
+        suggestions.addAll(playerTargetSuggestions(source));
+        return suggestions;
     }
 
     private static Collection<ServerPlayer> defaultTargets(CommandSourceStack source) {
