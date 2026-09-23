@@ -5,6 +5,7 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.common.NeoForge;
 import org.crafterscr.crafterscam.command.CamCommands;
+import org.crafterscr.crafterscam.command.ModArgumentTypes;
 import org.crafterscr.crafterscam.network.ModNetworking;
 import org.crafterscr.crafterscam.server.CamServerEvents;
 import org.slf4j.Logger;
@@ -19,6 +20,7 @@ public class CraftersCam {
     public static final Logger LOGGER = LogUtils.getLogger();
 
     public CraftersCam(IEventBus modEventBus) {
+        ModArgumentTypes.register(modEventBus);
         modEventBus.addListener(ModNetworking::register);
 
         NeoForge.EVENT_BUS.addListener(CamCommands::register);
