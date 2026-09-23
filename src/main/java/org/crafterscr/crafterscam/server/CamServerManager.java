@@ -459,6 +459,7 @@ public class CamServerManager {
             return;
         }
 
+        CamStorage.CamData data = storage.data(server);
         Iterator<Map.Entry<UUID, String>> iterator = sequencePathViewers.entrySet().iterator();
 
         while (iterator.hasNext()) {
@@ -470,11 +471,20 @@ public class CamServerManager {
                 continue;
             }
 
-            PathDataResult pathData = buildPathData(server, entry.getValue());
-
-            if (!pathData.success()) {
+            // Si la secuencia fue eliminada de verdad, cerramos la visualización.
+            if (!data.sequences.containsKey(entry.getValue())) {
                 PacketDistributor.sendToPlayer(player, CameraPathPayload.hidden());
                 iterator.remove();
+                continue;
+            }
+
+            PathDataResult pathData = buildPathData(server, entry.getValue());
+
+            // Si temporalmente está vacía o le falta un punto durante la edición,
+            // ocultamos la guía pero conservamos la suscripción del admin.
+            // En cuanto vuelva a ser válida, reaparecerá automáticamente.
+            if (!pathData.success()) {
+                PacketDistributor.sendToPlayer(player, CameraPathPayload.hidden());
                 continue;
             }
 
