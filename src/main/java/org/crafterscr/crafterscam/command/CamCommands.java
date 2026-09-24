@@ -335,6 +335,7 @@ public class CamCommands {
 
                                 .then(Commands.literal("addview")
                                         .then(Commands.argument("seq", StringArgumentType.word())
+                                                .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(MANAGER.sequenceIds(ctx.getSource().getServer()), builder))
                                                 .then(Commands.argument("point", StringArgumentType.word())
                                                         .then(Commands.argument("seconds", IntegerArgumentType.integer(1, 3600))
                                                                 .executes(ctx -> addViewHere(
@@ -360,6 +361,7 @@ public class CamCommands {
 
                                 .then(Commands.literal("moveview")
                                         .then(Commands.argument("seq", StringArgumentType.word())
+                                                .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(MANAGER.sequenceIds(ctx.getSource().getServer()), builder))
                                                 .then(Commands.argument("point", StringArgumentType.word())
                                                         .then(Commands.argument("seconds", IntegerArgumentType.integer(1, 3600))
                                                                 .executes(ctx -> moveViewHere(
@@ -492,25 +494,25 @@ public class CamCommands {
                 + "hideHudAll=" + settings.hideHudAll + ", "
                 + "movement=" + settings.allowMovement;
 
-        source.sendSuccess(() -> Component.literal(text), false);
+        feedback(source, text);
         return 1;
     }
 
     private static int setFade(CommandSourceStack source, int inSeconds, int outSeconds) {
         MANAGER.setFade(source.getServer(), inSeconds, outSeconds);
-        source.sendSuccess(() -> Component.literal("Fade actualizado: entrada " + inSeconds + "s, salida " + outSeconds + "s."), false);
+        feedback(source, "Fade actualizado: entrada " + inSeconds + "s, salida " + outSeconds + "s.");
         return 1;
     }
 
     private static int setBars(CommandSourceStack source, boolean enabled) {
         MANAGER.setBars(source.getServer(), enabled);
-        source.sendSuccess(() -> Component.literal("Barras cinematográficas: " + enabled), false);
+        feedback(source, "Barras cinematográficas: " + enabled);
         return 1;
     }
 
     private static int setHideHud(CommandSourceStack source, boolean enabled) {
         MANAGER.setHideHudAll(source.getServer(), enabled);
-        source.sendSuccess(() -> Component.literal("Ocultar HUD completo: " + enabled), false);
+        feedback(source, "Ocultar HUD completo: " + enabled);
         return 1;
     }
 
@@ -518,9 +520,9 @@ public class CamCommands {
         MANAGER.setAllowMovement(source.getServer(), enabled);
 
         if (enabled) {
-            source.sendSuccess(() -> Component.literal("Movimiento durante cinemáticas: true. Los jugadores podrán caminar, girar y brincar."), false);
+            feedback(source, "Movimiento durante cinemáticas: true. Los jugadores podrán caminar, girar y brincar.");
         } else {
-            source.sendSuccess(() -> Component.literal("Movimiento durante cinemáticas: false. Los jugadores podrán girar y brincar, pero no caminar."), false);
+            feedback(source, "Movimiento durante cinemáticas: false. Los jugadores podrán girar y brincar, pero no caminar.");
         }
 
         return 1;
@@ -532,9 +534,9 @@ public class CamCommands {
         MANAGER.setShowAllPoints(source.getServer(), player, enabled);
 
         if (enabled) {
-            source.sendSuccess(() -> Component.literal("Mostrando puntos de cámara en esta dimensión."), false);
+            feedback(source, "Mostrando puntos de cámara en esta dimensión.");
         } else {
-            source.sendSuccess(() -> Component.literal("Puntos de cámara ocultos."), false);
+            feedback(source, "Puntos de cámara ocultos.");
         }
 
         return 1;
@@ -549,7 +551,7 @@ public class CamCommands {
         ServerPlayer player = source.getPlayerOrException();
         MANAGER.savePoint(source.getServer(), player, id, fov);
 
-        source.sendSuccess(() -> Component.literal("Punto de cámara guardado: " + id), false);
+        feedback(source, "Punto de cámara guardado: " + id);
         return 1;
     }
 
@@ -561,7 +563,7 @@ public class CamCommands {
             return 0;
         }
 
-        source.sendSuccess(() -> Component.literal("Punto eliminado: " + id), false);
+        feedback(source, "Punto eliminado: " + id);
         return 1;
     }
 
@@ -569,11 +571,11 @@ public class CamCommands {
         Collection<String> ids = MANAGER.pointIds(source.getServer());
 
         if (ids.isEmpty()) {
-            source.sendSuccess(() -> Component.literal("No hay puntos guardados."), false);
+            feedback(source, "No hay puntos guardados.");
             return 0;
         }
 
-        source.sendSuccess(() -> Component.literal("Puntos: " + String.join(", ", ids)), false);
+        feedback(source, "Puntos: " + String.join(", ", ids));
         return ids.size();
     }
 
@@ -588,7 +590,7 @@ public class CamCommands {
             return 0;
         }
 
-        source.sendSuccess(() -> Component.literal("Grupo creado: " + id), false);
+        feedback(source, "Grupo creado: " + id);
         return 1;
     }
 
@@ -598,7 +600,7 @@ public class CamCommands {
             return 0;
         }
 
-        source.sendSuccess(() -> Component.literal("Grupo eliminado: " + id), false);
+        feedback(source, "Grupo eliminado: " + id);
         return 1;
     }
 
@@ -606,11 +608,11 @@ public class CamCommands {
         Collection<String> groups = MANAGER.groupIds(source.getServer());
 
         if (groups.isEmpty()) {
-            source.sendSuccess(() -> Component.literal("No hay grupos de audiencia."), false);
+            feedback(source, "No hay grupos de audiencia.");
             return 0;
         }
 
-        source.sendSuccess(() -> Component.literal("Grupos: " + String.join(", ", groups)), false);
+        feedback(source, "Grupos: " + String.join(", ", groups));
         return groups.size();
     }
 
@@ -623,11 +625,11 @@ public class CamCommands {
         Collection<String> members = MANAGER.groupMembers(source.getServer(), id);
 
         if (members.isEmpty()) {
-            source.sendSuccess(() -> Component.literal("El grupo " + id + " no tiene miembros."), false);
+            feedback(source, "El grupo " + id + " no tiene miembros.");
             return 0;
         }
 
-        source.sendSuccess(() -> Component.literal("Miembros de " + id + ": " + String.join(", ", members)), false);
+        feedback(source, "Miembros de " + id + ": " + String.join(", ", members));
         return members.size();
     }
 
@@ -639,7 +641,7 @@ public class CamCommands {
             return 0;
         }
 
-        source.sendSuccess(() -> Component.literal(result.message()), false);
+        feedback(source, result.message());
         return Math.max(1, result.changed());
     }
 
@@ -651,7 +653,7 @@ public class CamCommands {
             return 0;
         }
 
-        source.sendSuccess(() -> Component.literal(result.message()), false);
+        feedback(source, result.message());
         return Math.max(1, result.changed());
     }
 
@@ -668,7 +670,7 @@ public class CamCommands {
             return 0;
         }
 
-        source.sendSuccess(() -> Component.literal("Secuencia creada: " + id), false);
+        feedback(source, "Secuencia creada: " + id);
         return 1;
     }
 
@@ -680,7 +682,7 @@ public class CamCommands {
             return 0;
         }
 
-        source.sendSuccess(() -> Component.literal("Secuencia eliminada: " + id), false);
+        feedback(source, "Secuencia eliminada: " + id);
         return 1;
     }
 
@@ -692,7 +694,7 @@ public class CamCommands {
             return 0;
         }
 
-        source.sendSuccess(() -> Component.literal("Secuencia limpiada: " + id), false);
+        feedback(source, "Secuencia limpiada: " + id);
         return 1;
     }
 
@@ -704,7 +706,7 @@ public class CamCommands {
             return 0;
         }
 
-        source.sendSuccess(() -> Component.literal(result.message()), false);
+        feedback(source, result.message());
         return 1;
     }
 
@@ -712,11 +714,11 @@ public class CamCommands {
         Collection<String> ids = MANAGER.sequenceIds(source.getServer());
 
         if (ids.isEmpty()) {
-            source.sendSuccess(() -> Component.literal("No hay secuencias guardadas."), false);
+            feedback(source, "No hay secuencias guardadas.");
             return 0;
         }
 
-        source.sendSuccess(() -> Component.literal("Secuencias: " + String.join(", ", ids)), false);
+        feedback(source, "Secuencias: " + String.join(", ", ids));
         return ids.size();
     }
 
@@ -728,7 +730,7 @@ public class CamCommands {
             return 0;
         }
 
-        source.sendSuccess(() -> Component.literal("Agregado HOLD de " + seconds + "s en " + point + " a " + seq), false);
+        feedback(source, "Agregado HOLD de " + seconds + "s en " + point + " a " + seq);
         return 1;
     }
 
@@ -740,7 +742,7 @@ public class CamCommands {
             return 0;
         }
 
-        source.sendSuccess(() -> Component.literal("Agregado MOVE de " + from + " a " + to + " en " + seconds + "s con " + CameraEasing.safe(easing).name()), false);
+        feedback(source, "Agregado MOVE de " + from + " a " + to + " en " + seconds + "s con " + CameraEasing.safe(easing).name());
         return 1;
     }
 
@@ -752,7 +754,7 @@ public class CamCommands {
             return 0;
         }
 
-        source.sendSuccess(() -> Component.literal("Agregado CUT a " + point + " en " + seq), false);
+        feedback(source, "Agregado CUT a " + point + " en " + seq);
         return 1;
     }
 
@@ -765,7 +767,7 @@ public class CamCommands {
         ServerPlayer player = source.getPlayerOrException();
         MANAGER.addViewHere(source.getServer(), player, seq, point, seconds, fov);
 
-        source.sendSuccess(() -> Component.literal("Vista actual guardada como " + point + " y agregada quieta a " + seq), false);
+        feedback(source, "Vista actual guardada como " + point + " y agregada quieta a " + seq);
         return 1;
     }
 
@@ -778,7 +780,7 @@ public class CamCommands {
         ServerPlayer player = source.getPlayerOrException();
         MANAGER.moveViewHere(source.getServer(), player, seq, point, seconds, fov, easing);
 
-        source.sendSuccess(() -> Component.literal("Vista actual guardada como " + point + " y agregada como movimiento a " + seq + " con " + CameraEasing.safe(easing).name()), false);
+        feedback(source, "Vista actual guardada como " + point + " y agregada como movimiento a " + seq + " con " + CameraEasing.safe(easing).name());
         return 1;
     }
 
@@ -790,7 +792,7 @@ public class CamCommands {
             return 0;
         }
 
-        source.sendSuccess(() -> Component.literal(result.message()), false);
+        feedback(source, result.message());
         return result.sent();
     }
 
@@ -803,7 +805,7 @@ public class CamCommands {
             return 0;
         }
 
-        source.sendSuccess(() -> Component.literal(result.message()), false);
+        feedback(source, result.message());
         return 1;
     }
 
@@ -812,9 +814,9 @@ public class CamCommands {
         boolean wasVisible = MANAGER.hideSequencePath(player);
 
         if (wasVisible) {
-            source.sendSuccess(() -> Component.literal("Trayectoria de cámara oculta."), false);
+            feedback(source, "Trayectoria de cámara oculta.");
         } else {
-            source.sendSuccess(() -> Component.literal("No tenías ninguna trayectoria visible."), false);
+            feedback(source, "No tenías ninguna trayectoria visible.");
         }
 
         return 1;
@@ -829,7 +831,7 @@ public class CamCommands {
             return 0;
         }
 
-        source.sendSuccess(() -> Component.literal("Preview iniciado solo para ti: " + sequenceId), false);
+        feedback(source, "Preview iniciado solo para ti: " + sequenceId);
         return result.sent();
     }
 
@@ -841,14 +843,14 @@ public class CamCommands {
             return 0;
         }
 
-        source.sendSuccess(() -> Component.literal(result.message()), false);
+        feedback(source, result.message());
         return result.sent();
     }
 
     private static int stop(CommandSourceStack source, Collection<ServerPlayer> targets) {
         int stopped = MANAGER.stop(targets);
 
-        source.sendSuccess(() -> Component.literal("Cinemática detenida para " + stopped + " jugador(es)."), false);
+        feedback(source, "Cinemática detenida para " + stopped + " jugador(es).");
         return stopped;
     }
 
@@ -917,6 +919,10 @@ public class CamCommands {
         suggestions.addAll(MANAGER.groupMembers(source.getServer(), groupId));
         suggestions.addAll(playerTargetSuggestions(source));
         return suggestions;
+    }
+
+    private static void feedback(CommandSourceStack source, String message) {
+        source.sendSystemMessage(Component.literal(message));
     }
 
     private static Collection<ServerPlayer> defaultTargets(CommandSourceStack source) {
